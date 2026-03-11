@@ -1,12 +1,10 @@
 import { create } from 'zustand';
+import { getInterpolatedValue } from '../utils/animation';
 
-interface Keyframe {
+export interface Keyframe {
   id: string;
   time: number;
-  x: number;
-  y: number;
-  initialX: number;
-  initialY: number;
+  value: number;
   easing: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'elastic';
 }
 
@@ -21,47 +19,73 @@ interface AppState {
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setCurveType: (type: Keyframe['easing']) => void;
-  addKeyframe: (x?: number, y?: number) => void;
+  addKeyframe: () => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
 }
 
 export const useStore = create<AppState>((set, get) => ({
   currentTime: 0,
-  duration: 5000, // Default duration 5 seconds
+  duration: 5000,
   isPlaying: false,
   keyframes: [],
   selectedCurveType: 'linear',
 
-  setCurrentTime: (time) => set({ currentTime: time }),
-  setDuration: (duration) => set({ duration }),
+  setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
+  setDuration: (duration) => set((state) => ({
+    duration,
+    currentTime: Math.min(state.currentTime, duration),
+    keyframes: state.keyframes
+      .map((keyframe) => ({ ...keyframe, time: Math.min(keyframe.time, duration) }))
+      .sort((a, b) => a.time - b.time),
+  })),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setCurveType: (type) => set({ selectedCurveType: type }),
-  
-  addKeyframe: (x, y) => {
+
+  addKeyframe: () => {
     const { currentTime, keyframes, selectedCurveType } = get();
-    
-    // Default to center of screen roughly if not provided (now with fixed 600px height context)
-    const defaultX = x ?? (typeof window !== 'undefined' ? window.innerWidth / 2 : 400);
-    const defaultY = y ?? 300; // Center of 600px fixed height
+    const defaultValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
 
     const newKeyframe: Keyframe = {
       id: Math.random().toString(36).substring(7),
       time: currentTime,
-      x: defaultX,
-      y: defaultY,
-      initialX: defaultX,
-      initialY: defaultY,
+      value: defaultValue,
       easing: selectedCurveType,
     };
-    
-    // Add and sort by time
-    const updatedKeyframes = [...keyframes, newKeyframe].sort((a, b) => a.time - b.time);
+
+    const existingIndex = keyframes.findIndex((kf) => Math.abs(kf.time - currentTime) < 1);
+    let updatedKeyframes: Keyframe[];
+
+    if (existingIndex >= 0) {
+      updatedKeyframes = [...keyframes];
+      updatedKeyframes[existingIndex] = {
+        ...updatedKeyframes[existingIndex],
+        value: newKeyframe.value,
+        easing: newKeyframe.easing,
+      };
+    } else {
+      updatedKeyframes = [...keyframes, newKeyframe].sort((a, b) => a.time - b.time);
+    }
+
     set({ keyframes: updatedKeyframes });
   },
 
   updateKeyframe: (id, updates) => {
+    const duration = get().duration;
+
     set((state) => ({
-      keyframes: state.keyframes.map((kf) => (kf.id === id ? { ...kf, ...updates } : kf)),
+      keyframes: state.keyframes
+        .map((kf) => {
+          if (kf.id !== id) {
+            return kf;
+          }
+
+          return {
+            ...kf,
+            ...updates,
+            time: updates.time === undefined ? kf.time : Math.max(0, Math.min(updates.time, duration)),
+          };
+        })
+        .sort((a, b) => a.time - b.time),
     }));
   },
 }));

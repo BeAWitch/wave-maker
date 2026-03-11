@@ -38,7 +38,7 @@ export function ControlsBar() {
             <span className="text-xs font-medium text-zinc-400">Curve:</span>
             <select 
               value={selectedCurveType}
-              onChange={(e) => setCurveType(e.target.value as any)}
+              onChange={(e) => setCurveType(e.target.value as typeof selectedCurveType)}
               className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-28"
             >
               <option value="linear" className="bg-zinc-900 text-zinc-100">Linear</option>

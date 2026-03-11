@@ -1,124 +1,124 @@
-import { useRef } from 'react';
-import { Stage, Layer, Circle, Line } from 'react-konva';
-import { useStore } from '../store/useStore';
-import { getInterpolatedPosition } from '../utils/animation';
+import { useMemo, useRef } from 'react';
+import { Circle, Layer, Line, Stage } from 'react-konva';
+import type Konva from 'konva';
+
 import { useContainerSize } from '../hooks/useContainerSize';
+import { useStore } from '../store/useStore';
+import { getCurvePoints, getInterpolatedValue, getScreenKeyframes } from '../utils/animation';
+
+const STAGE_HEIGHT = 600;
+const MAX_VALUE = 200;
+const PIXELS_PER_MS = 0.12;
+const SAMPLE_STEP_MS = 16;
+const POINT_RADIUS = 8;
 
 export function CanvasArea() {
-  const { keyframes, updateKeyframe, currentTime } = useStore();
+  const { currentTime, duration, keyframes, updateKeyframe } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const size = useContainerSize(containerRef);
 
-  const movingPos = getInterpolatedPosition(
-    keyframes.map(kf => ({ time: kf.time, x: kf.x, y: kf.y, easing: kf.easing })),
-    currentTime
+  const centerX = size.width / 2;
+  const centerY = STAGE_HEIGHT / 2;
+  const topBoundY = centerY - MAX_VALUE;
+  const bottomBoundY = centerY + MAX_VALUE;
+  const minBoundX = centerX - currentTime * PIXELS_PER_MS;
+  const maxBoundX = centerX + (duration - currentTime) * PIXELS_PER_MS;
+
+  const screenKeyframes = useMemo(
+    () => getScreenKeyframes(keyframes, currentTime, centerX, centerY, PIXELS_PER_MS),
+    [centerX, centerY, currentTime, keyframes]
   );
 
+  const curvePoints = useMemo(
+    () => getCurvePoints(keyframes, currentTime, size.width, centerX, centerY, PIXELS_PER_MS, SAMPLE_STEP_MS),
+    [centerX, centerY, currentTime, keyframes, size.width]
+  );
+
+  const currentValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
+  const markerY = centerY - currentValue;
+
+  const handleDragMove = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    const nextScreenX = event.target.x();
+    const nextScreenY = event.target.y();
+    const nextTime = currentTime + (nextScreenX - centerX) / PIXELS_PER_MS;
+    const nextValue = centerY - nextScreenY;
+
+    updateKeyframe(id, {
+      time: Math.max(0, Math.min(nextTime, duration)),
+      value: Math.max(-MAX_VALUE, Math.min(nextValue, MAX_VALUE)),
+    });
+  };
+
   return (
-    <div className="flex-1 w-full flex flex-col items-center justify-center bg-[#09090b] relative overflow-hidden">
-      <div 
+    <div className="flex-1 w-full flex flex-col items-center justify-center bg-[#18181b] relative overflow-hidden px-6 py-6">
+      <div
         ref={containerRef}
-        className="w-full relative shadow-[0_0_40px_rgba(0,0,0,0.5)] border-y border-zinc-800 overflow-hidden flex-shrink-0"
+        className="w-full relative overflow-hidden flex-shrink-0 rounded-xl border border-zinc-800 bg-[#18181b] shadow-[0_0_16px_rgba(255,255,255,0.08)]"
         style={{
-          height: '600px', // Fixed height, width fills exactly 100% of the screen
-          backgroundColor: '#18181b',
+          height: `${STAGE_HEIGHT}px`,
           backgroundImage: 'radial-gradient(circle, #3f3f46 1px, transparent 1px)',
-          backgroundSize: '24px 24px'
+          backgroundSize: '24px 24px',
         }}
       >
-        <div className="absolute top-4 left-6 text-zinc-500 font-mono text-xs uppercase tracking-wider pointer-events-none z-10">
-          Workspace: {size.width} x 600
+        <div className="absolute top-4 left-6 z-10 pointer-events-none font-mono text-xs uppercase tracking-wider text-zinc-500">
+          Workspace: {size.width} x {STAGE_HEIGHT}
         </div>
-        
+
         {size.width > 0 && (
-          <Stage width={size.width} height={600}>
-          <Layer>
-            {/* Draw connecting lines */}
-            {keyframes.length > 1 && (
-              <Line
-                points={keyframes.flatMap(kf => [kf.x, kf.y])}
-                stroke="#3b82f6"
-                strokeWidth={2}
-                lineJoin="round"
-                lineCap="round"
-                dash={[10, 5]} // Make the path dashed for a "blueprint" feel
-                opacity={0.6}
-                tension={0} // Straight lines for the visual path for now
-              />
-            )}
+          <Stage width={size.width} height={STAGE_HEIGHT}>
+            <Layer>
+              <Line points={[0, centerY, size.width, centerY]} stroke="rgba(255,255,255,0.82)" strokeWidth={2} />
+              <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
+              <Line points={[0, bottomBoundY, size.width, bottomBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
+              <Line points={[centerX, 0, centerX, STAGE_HEIGHT]} stroke="rgba(255,255,255,0.12)" strokeWidth={1} dash={[8, 8]} />
 
-            {/* Ghost Keyframes (Initial Positions) */}
-            {keyframes.map((kf) => {
-              if (kf.x !== kf.initialX || kf.y !== kf.initialY) {
-                return (
-                  <Circle
-                    key={`ghost-${kf.id}`}
-                    x={kf.initialX}
-                    y={kf.initialY}
-                    radius={5}
-                    fill="transparent"
-                    stroke="rgba(59, 130, 246, 0.4)"
-                    strokeWidth={2}
-                    dash={[4, 4]}
-                  />
-                );
-              }
-              return null;
-            })}
+              {curvePoints.length > 3 && (
+                <Line
+                  points={curvePoints}
+                  stroke="#f4f4f5"
+                  strokeWidth={6}
+                  lineJoin="round"
+                  lineCap="round"
+                  tension={0.45}
+                />
+              )}
 
-            {/* Active Keyframes */}
-            {keyframes.map((kf) => (
               <Circle
-                key={kf.id}
-                x={kf.x}
-                y={kf.y}
-                radius={7}
-                fill="#18181b"
-                stroke="#3b82f6"
-                strokeWidth={3}
-                draggable
-                onDragStart={(e) => {
-                  e.target.moveToTop();
-                  // Visual feedback on drag
-                  const node = e.target as any;
-                  node.strokeWidth(4);
-                  node.stroke('#60a5fa');
-                }}
-                onDragMove={(e) => {
-                  updateKeyframe(kf.id, { x: e.target.x(), y: e.target.y() });
-                }}
-                onDragEnd={(e) => {
-                  updateKeyframe(kf.id, { x: e.target.x(), y: e.target.y() });
-                  // Reset visual feedback
-                  const node = e.target as any;
-                  node.strokeWidth(3);
-                  node.stroke('#3b82f6');
-                }}
-                onMouseEnter={() => {
-                  document.body.style.cursor = 'grab';
-                }}
-                onMouseLeave={() => {
-                  document.body.style.cursor = 'default';
-                }}
-                shadowColor="rgba(59, 130, 246, 0.5)"
-                shadowBlur={10}
+                x={centerX}
+                y={markerY}
+                radius={16}
+                fill="rgba(255,255,255,0.28)"
+                listening={false}
               />
-            ))}
 
-            {/* Current Animating Object (The Moving Dot) */}
-            {movingPos && (
-              <Circle
-                x={movingPos.x}
-                y={movingPos.y}
-                radius={10}
-                fill="#ef4444" // Red for the animating object
-                shadowColor="#ef4444"
-                shadowBlur={15}
-                shadowOpacity={0.6}
-              />
-            )}
-          </Layer>
-        </Stage>
+              {screenKeyframes.map((keyframe) => (
+                <Circle
+                  key={keyframe.id}
+                  x={keyframe.screenX}
+                  y={keyframe.screenY}
+                  radius={POINT_RADIUS}
+                  fill="#e5e7eb"
+                  stroke="#fb923c"
+                  strokeWidth={2}
+                  draggable
+                  dragBoundFunc={(position) => ({
+                    x: Math.max(minBoundX, Math.min(position.x, maxBoundX)),
+                    y: Math.max(topBoundY, Math.min(position.y, bottomBoundY)),
+                  })}
+                  onDragMove={(event) => handleDragMove(keyframe.id, event)}
+                  onDragEnd={(event) => handleDragMove(keyframe.id, event)}
+                  onMouseEnter={() => {
+                    document.body.style.cursor = 'grab';
+                  }}
+                  onMouseLeave={() => {
+                    document.body.style.cursor = 'default';
+                  }}
+                  shadowColor="rgba(251,146,60,0.45)"
+                  shadowBlur={10}
+                />
+              ))}
+            </Layer>
+          </Stage>
         )}
       </div>
     </div>
