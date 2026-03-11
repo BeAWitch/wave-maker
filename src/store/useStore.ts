@@ -21,7 +21,7 @@ interface AppState {
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setCurveType: (type: Keyframe['easing']) => void;
-  addKeyframe: () => void;
+  addKeyframe: (x?: number, y?: number) => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
 }
 
@@ -37,16 +37,20 @@ export const useStore = create<AppState>((set, get) => ({
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setCurveType: (type) => set({ selectedCurveType: type }),
   
-  addKeyframe: () => {
+  addKeyframe: (x, y) => {
     const { currentTime, keyframes, selectedCurveType } = get();
-    // In future iterations, we'll calculate position based on current time
+    
+    // Default to center of screen roughly if not provided (now with fixed 600px height context)
+    const defaultX = x ?? (typeof window !== 'undefined' ? window.innerWidth / 2 : 400);
+    const defaultY = y ?? 300; // Center of 600px fixed height
+
     const newKeyframe: Keyframe = {
       id: Math.random().toString(36).substring(7),
       time: currentTime,
-      x: 400, // Center of 800x600 canvas
-      y: 300,
-      initialX: 400,
-      initialY: 300,
+      x: defaultX,
+      y: defaultY,
+      initialX: defaultX,
+      initialY: defaultY,
       easing: selectedCurveType,
     };
     
