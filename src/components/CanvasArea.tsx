@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { Circle, Layer, Line, Stage } from 'react-konva';
 import type Konva from 'konva';
+import { RotateCcw } from 'lucide-react';
 
 import { useContainerSize } from '../hooks/useContainerSize';
 import { useStore } from '../store/useStore';
@@ -8,45 +9,99 @@ import { getCurvePoints, getInterpolatedValue, getScreenKeyframes } from '../uti
 
 const STAGE_HEIGHT = 600;
 const MAX_VALUE = 200;
-const PIXELS_PER_MS = 0.12;
 const SAMPLE_STEP_MS = 16;
 const POINT_RADIUS = 8;
+const ZOOM_IN_FACTOR = 1.1;
+const ZOOM_OUT_FACTOR = 0.9;
+const DEFAULT_PIXELS_PER_MS = 1;
 
 export function CanvasArea() {
-  const { currentTime, duration, keyframes, updateKeyframe } = useStore();
+  const {
+    currentTime,
+    duration,
+    keyframes,
+    pixelsPerMs,
+    setCurrentTime,
+    setPixelsPerMs,
+    updateKeyframe,
+  } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
+  const panStateRef = useRef<{ startClientX: number; startTime: number; active: boolean }>({
+    startClientX: 0,
+    startTime: 0,
+    active: false,
+  });
   const size = useContainerSize(containerRef);
 
   const centerX = size.width / 2;
   const centerY = STAGE_HEIGHT / 2;
   const topBoundY = centerY - MAX_VALUE;
   const bottomBoundY = centerY + MAX_VALUE;
-  const minBoundX = centerX - currentTime * PIXELS_PER_MS;
-  const maxBoundX = centerX + (duration - currentTime) * PIXELS_PER_MS;
+  const minBoundX = centerX - currentTime * pixelsPerMs;
+  const maxBoundX = centerX + (duration - currentTime) * pixelsPerMs;
 
   const screenKeyframes = useMemo(
-    () => getScreenKeyframes(keyframes, currentTime, centerX, centerY, PIXELS_PER_MS),
-    [centerX, centerY, currentTime, keyframes]
+    () => getScreenKeyframes(keyframes, currentTime, centerX, centerY, pixelsPerMs),
+    [centerX, centerY, currentTime, keyframes, pixelsPerMs]
   );
 
   const curvePoints = useMemo(
-    () => getCurvePoints(keyframes, currentTime, size.width, centerX, centerY, PIXELS_PER_MS, SAMPLE_STEP_MS),
-    [centerX, centerY, currentTime, keyframes, size.width]
+    () => getCurvePoints(keyframes, currentTime, size.width, centerX, centerY, pixelsPerMs, SAMPLE_STEP_MS),
+    [centerX, centerY, currentTime, keyframes, pixelsPerMs, size.width]
   );
 
   const currentValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
   const markerY = centerY - currentValue;
 
-  const handleDragMove = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
+  const handleKeyframeDrag = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
     const nextScreenX = event.target.x();
     const nextScreenY = event.target.y();
-    const nextTime = currentTime + (nextScreenX - centerX) / PIXELS_PER_MS;
+    const nextTime = currentTime + (nextScreenX - centerX) / pixelsPerMs;
     const nextValue = centerY - nextScreenY;
 
     updateKeyframe(id, {
       time: Math.max(0, Math.min(nextTime, duration)),
       value: Math.max(-MAX_VALUE, Math.min(nextValue, MAX_VALUE)),
     });
+  };
+
+  const handleWheel = (event: Konva.KonvaEventObject<WheelEvent>) => {
+    event.evt.preventDefault();
+
+    const zoomFactor = event.evt.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+    setPixelsPerMs(pixelsPerMs * zoomFactor);
+  };
+
+  const handleStagePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    if (event.target !== event.target.getStage()) {
+      return;
+    }
+
+    panStateRef.current = {
+      startClientX: event.evt.clientX,
+      startTime: currentTime,
+      active: true,
+    };
+    document.body.style.cursor = 'grabbing';
+  };
+
+  const handleStagePointerMove = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    if (!panStateRef.current.active) {
+      return;
+    }
+
+    const deltaX = event.evt.clientX - panStateRef.current.startClientX;
+    const nextTime = panStateRef.current.startTime - deltaX / pixelsPerMs;
+    setCurrentTime(nextTime);
+  };
+
+  const handleStagePointerUp = () => {
+    if (!panStateRef.current.active) {
+      return;
+    }
+
+    panStateRef.current.active = false;
+    document.body.style.cursor = 'default';
   };
 
   return (
@@ -58,14 +113,32 @@ export function CanvasArea() {
           height: `${STAGE_HEIGHT}px`,
           backgroundImage: 'radial-gradient(circle, #3f3f46 1px, transparent 1px)',
           backgroundSize: '24px 24px',
+          touchAction: 'none',
         }}
       >
         <div className="absolute top-4 left-6 z-10 pointer-events-none font-mono text-xs uppercase tracking-wider text-zinc-500">
-          Workspace: {size.width} x {STAGE_HEIGHT}
+          Workspace: {size.width} x {STAGE_HEIGHT} | Zoom: {pixelsPerMs.toFixed(2)} px/ms
         </div>
+        <button
+          type="button"
+          className="absolute top-3 right-4 z-10 flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-900"
+          onClick={() => setPixelsPerMs(DEFAULT_PIXELS_PER_MS)}
+        >
+          <RotateCcw size={14} />
+          Reset Zoom
+        </button>
 
         {size.width > 0 && (
-          <Stage width={size.width} height={STAGE_HEIGHT}>
+          <Stage
+            width={size.width}
+            height={STAGE_HEIGHT}
+            onWheel={handleWheel}
+            onPointerDown={handleStagePointerDown}
+            onPointerMove={handleStagePointerMove}
+            onPointerUp={handleStagePointerUp}
+            onPointerLeave={handleStagePointerUp}
+            onPointerCancel={handleStagePointerUp}
+          >
             <Layer>
               <Line points={[0, centerY, size.width, centerY]} stroke="rgba(255,255,255,0.82)" strokeWidth={2} />
               <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
@@ -105,13 +178,18 @@ export function CanvasArea() {
                     x: Math.max(minBoundX, Math.min(position.x, maxBoundX)),
                     y: Math.max(topBoundY, Math.min(position.y, bottomBoundY)),
                   })}
-                  onDragMove={(event) => handleDragMove(keyframe.id, event)}
-                  onDragEnd={(event) => handleDragMove(keyframe.id, event)}
+                  onDragMove={(event) => handleKeyframeDrag(keyframe.id, event)}
+                  onDragEnd={(event) => handleKeyframeDrag(keyframe.id, event)}
+                  onDragStart={() => {
+                    panStateRef.current.active = false;
+                  }}
                   onMouseEnter={() => {
                     document.body.style.cursor = 'grab';
                   }}
                   onMouseLeave={() => {
-                    document.body.style.cursor = 'default';
+                    if (!panStateRef.current.active) {
+                      document.body.style.cursor = 'default';
+                    }
                   }}
                   shadowColor="rgba(251,146,60,0.45)"
                   shadowBlur={10}

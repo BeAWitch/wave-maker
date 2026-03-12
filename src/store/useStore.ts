@@ -14,14 +14,19 @@ interface AppState {
   isPlaying: boolean;
   keyframes: Keyframe[];
   selectedCurveType: Keyframe['easing'];
+  pixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setCurveType: (type: Keyframe['easing']) => void;
+  setPixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
 }
+
+const MIN_PIXELS_PER_MS = 0.03;
+const MAX_PIXELS_PER_MS = 2;
 
 export const useStore = create<AppState>((set, get) => ({
   currentTime: 0,
@@ -29,6 +34,7 @@ export const useStore = create<AppState>((set, get) => ({
   isPlaying: false,
   keyframes: [],
   selectedCurveType: 'linear',
+  pixelsPerMs: 0.12,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
   setDuration: (duration) => set((state) => ({
@@ -40,6 +46,9 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setCurveType: (type) => set({ selectedCurveType: type }),
+  setPixelsPerMs: (pixelsPerMs) => set({
+    pixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(pixelsPerMs, MAX_PIXELS_PER_MS)),
+  }),
 
   addKeyframe: () => {
     const { currentTime, keyframes, selectedCurveType } = get();
