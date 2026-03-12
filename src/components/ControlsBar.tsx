@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Play, Pause, CircleDot, Settings, Download, Trash2 } from 'lucide-react';
+import { Play, Pause, SkipBack, CircleDot, Settings, Download, Trash2 } from 'lucide-react';
 import { useStore, type CurveType, type EasingMode } from '../store/useStore';
 
 const CURVE_OPTIONS: Array<{ value: CurveType; label: string }> = [
@@ -20,6 +20,7 @@ export function ControlsBar() {
     isPlaying,
     keyframes,
     selectedKeyframeId,
+    setCurrentTime,
     setIsPlaying,
     addKeyframe,
     deleteSelectedKeyframe,
@@ -68,6 +69,18 @@ export function ControlsBar() {
             title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? <Pause size={18} /> : <Play size={18} className="ml-0.5" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentTime(0);
+              setIsPlaying(true);
+            }}
+            className="w-10 h-10 flex items-center justify-center rounded-md bg-zinc-800 text-zinc-300 transition-all hover:bg-zinc-700"
+            title="Play from start"
+          >
+            <SkipBack size={18} />
           </button>
 
           <div className="h-6 w-px bg-zinc-800" />
