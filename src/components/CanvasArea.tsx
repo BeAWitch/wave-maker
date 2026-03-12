@@ -6,26 +6,24 @@ import { RotateCcw } from 'lucide-react';
 import { useContainerSize } from '../hooks/useContainerSize';
 import { useStore } from '../store/useStore';
 import { getCurvePoints, getInterpolatedValue, getScreenKeyframes } from '../utils/animation';
+import {
+  CURVE_STROKE,
+  CURVE_STROKE_WIDTH,
+  CURVE_TENSION,
+  DOT_FILL,
+  DOT_RADIUS,
+  MAX_VALUE,
+  POINT_RADIUS,
+  SAMPLE_STEP_MS,
+  STAGE_HEIGHT,
+  getDefaultCanvasPixelsPerMs,
+} from '../utils/canvasScene';
 
-const STAGE_HEIGHT = 600;
-const MAX_VALUE = 200;
-const SAMPLE_STEP_MS = 16;
-const POINT_RADIUS = 8;
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
-const CANVAS_BOUNDARY_INSET_PX = 24;
 const SNAP_THRESHOLD_PX = 6;
 const TIMELINE_BLUE = '#3b82f6';
 const CENTER_GUIDE_YELLOW = 'rgba(251,191,36,0.95)';
-
-function getDefaultCanvasPixelsPerMs(width: number, duration: number) {
-  if (width <= 0 || duration <= 0) {
-    return 1;
-  }
-
-  const fittedWidth = Math.max(width - CANVAS_BOUNDARY_INSET_PX * 2, width * 0.25);
-  return fittedWidth / duration;
-}
 
 interface SnapGuidesState {
   horizontal: boolean;
@@ -438,19 +436,19 @@ export function CanvasArea() {
               {curvePoints.length > 3 && (
                 <Line
                   points={curvePoints}
-                  stroke="#f4f4f5"
-                  strokeWidth={6}
+                  stroke={CURVE_STROKE}
+                  strokeWidth={CURVE_STROKE_WIDTH}
                   lineJoin="round"
                   lineCap="round"
-                  tension={0.45}
+                  tension={CURVE_TENSION}
                 />
               )}
 
               <Circle
                 x={centerX}
                 y={markerY}
-                radius={16}
-                fill="rgba(255,255,255,0.28)"
+                radius={DOT_RADIUS}
+                fill={DOT_FILL}
                 listening={false}
               />
 
