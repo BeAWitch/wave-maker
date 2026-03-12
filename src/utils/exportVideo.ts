@@ -3,13 +3,10 @@ import Konva from 'konva';
 import type { Keyframe } from '../store/useStore';
 import { getCurvePoints, getInterpolatedValue } from './animation';
 import {
-  CURVE_STROKE,
   CURVE_STROKE_WIDTH,
   CURVE_TENSION,
   DEFAULT_BOUNDARY_COLOR,
   DEFAULT_GUIDE_COLOR,
-  DOT_FILL,
-  DOT_RADIUS,
   MAX_VALUE,
   SAMPLE_STEP_MS,
   STAGE_HEIGHT,
@@ -31,6 +28,12 @@ export interface ExportVideoOptions {
   backgroundColor: string;
   showCenterLine: boolean;
   showBoundaryLines: boolean;
+  curveColor: string;
+  curveOpacity: number;
+  dotColor: string;
+  dotOpacity: number;
+  dotShape: 'circle' | 'square' | 'triangle';
+  dotSize: number;
   onProgress?: (progress: number) => void;
 }
 
@@ -47,7 +50,7 @@ interface ExportRenderer {
   layer: Konva.Layer;
   sceneCanvas: HTMLCanvasElement;
   curveLine: Konva.Line;
-  marker: Konva.Circle;
+  marker: Konva.Shape;
   width: number;
   height: number;
 }
@@ -259,20 +262,48 @@ function createExportRenderer(
 
   const curveLine = new Konva.Line({
     points: [],
-    stroke: CURVE_STROKE,
+    stroke: options.curveColor,
+    opacity: options.curveOpacity,
     strokeWidth: CURVE_STROKE_WIDTH,
     lineJoin: 'round',
     lineCap: 'round',
     tension: CURVE_TENSION,
     listening: false,
   });
-  const marker = new Konva.Circle({
-    x: width / 2,
-    y: centerY,
-    radius: DOT_RADIUS,
-    fill: DOT_FILL,
-    listening: false,
-  });
+
+  let marker: Konva.Shape;
+  if (options.dotShape === 'square') {
+    marker = new Konva.Rect({
+      x: width / 2,
+      y: centerY,
+      width: options.dotSize * 2,
+      height: options.dotSize * 2,
+      offsetX: options.dotSize,
+      offsetY: options.dotSize,
+      fill: options.dotColor,
+      opacity: options.dotOpacity,
+      listening: false,
+    });
+  } else if (options.dotShape === 'triangle') {
+    marker = new Konva.RegularPolygon({
+      x: width / 2,
+      y: centerY,
+      sides: 3,
+      radius: options.dotSize * 1.2,
+      fill: options.dotColor,
+      opacity: options.dotOpacity,
+      listening: false,
+    });
+  } else {
+    marker = new Konva.Circle({
+      x: width / 2,
+      y: centerY,
+      radius: options.dotSize,
+      fill: options.dotColor,
+      opacity: options.dotOpacity,
+      listening: false,
+    });
+  }
 
   layer.add(curveLine);
   layer.add(marker);

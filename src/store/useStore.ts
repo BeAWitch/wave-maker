@@ -3,6 +3,7 @@ import { getInterpolatedValue } from '../utils/animation';
 
 export type CurveType = 'linear' | 'quadratic' | 'cubic' | 'bezier';
 export type EasingMode = 'easeIn' | 'easeOut' | 'easeInOut';
+export type DotShape = 'circle' | 'square' | 'triangle';
 
 export interface Keyframe {
   id: string;
@@ -29,12 +30,27 @@ interface AppState {
   pixelsPerMs: number;
   timelinePixelsPerMs: number;
 
+  curveColor: string;
+  curveOpacity: number;
+  dotColor: string;
+  dotOpacity: number;
+  dotShape: DotShape;
+  dotSize: number;
+
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setSelectedKeyframeIds: (ids: string[]) => void;
   setPixelsPerMs: (pixelsPerMs: number) => void;
   setTimelinePixelsPerMs: (pixelsPerMs: number) => void;
+  
+  setCurveColor: (color: string) => void;
+  setCurveOpacity: (opacity: number) => void;
+  setDotColor: (color: string) => void;
+  setDotOpacity: (opacity: number) => void;
+  setDotShape: (shape: DotShape) => void;
+  setDotSize: (size: number) => void;
+
   addKeyframe: () => void;
   deleteSelectedKeyframes: () => void;
   copySelectedKeyframes: () => void;
@@ -57,6 +73,13 @@ export const useStore = create<AppState>((set, get) => ({
   clipboardKeyframes: [],
   pixelsPerMs: 0.12,
   timelinePixelsPerMs: 0.2,
+  
+  curveColor: '#60a5fa',
+  curveOpacity: 1,
+  dotColor: '#ffffff',
+  dotOpacity: 0.28,
+  dotShape: 'circle',
+  dotSize: 8,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
   setDuration: (duration) => set((state) => ({
@@ -74,6 +97,12 @@ export const useStore = create<AppState>((set, get) => ({
   setTimelinePixelsPerMs: (timelinePixelsPerMs) => set({
     timelinePixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(timelinePixelsPerMs, MAX_PIXELS_PER_MS)),
   }),
+  setCurveColor: (curveColor) => set({ curveColor }),
+  setCurveOpacity: (curveOpacity) => set({ curveOpacity: Math.max(0, Math.min(curveOpacity, 1)) }),
+  setDotColor: (dotColor) => set({ dotColor }),
+  setDotOpacity: (dotOpacity) => set({ dotOpacity: Math.max(0, Math.min(dotOpacity, 1)) }),
+  setDotShape: (dotShape) => set({ dotShape }),
+  setDotSize: (dotSize) => set({ dotSize: Math.max(2, Math.min(dotSize, 50)) }),
 
   addKeyframe: () => {
     const { currentTime, keyframes } = get();

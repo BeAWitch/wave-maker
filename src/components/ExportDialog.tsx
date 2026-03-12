@@ -27,7 +27,7 @@ const BITRATE_OPTIONS = [
 ] as const;
 
 export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
-  const { duration, keyframes, pixelsPerMs, setIsPlaying } = useStore();
+  const { duration, keyframes, pixelsPerMs, setIsPlaying, curveColor, curveOpacity, dotColor, dotOpacity, dotShape, dotSize } = useStore();
   const [fps, setFps] = useState<number>(60);
   const [videoBitsPerSecond, setVideoBitsPerSecond] = useState<number>(16_000_000);
   const [exportPixelsPerMs, setExportPixelsPerMs] = useState<number>(pixelsPerMs);
@@ -102,6 +102,12 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
         backgroundColor,
         showCenterLine,
         showBoundaryLines,
+        curveColor,
+        curveOpacity,
+        dotColor,
+        dotOpacity,
+        dotShape,
+        dotSize,
         onProgress: setProgress,
       });
 

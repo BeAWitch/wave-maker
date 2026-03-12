@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Play, Pause, SkipBack, CircleDot, Settings, Download, Trash2 } from 'lucide-react';
 
 import { ExportDialog } from './ExportDialog';
+import { StyleSettings } from './StyleSettings';
 import { useStore, type CurveType, type EasingMode } from '../store/useStore';
 
 const CURVE_OPTIONS: Array<{ value: CurveType; label: string }> = [
@@ -163,6 +164,7 @@ export function ControlsBar() {
                 </select>
               </div>
             </div>
+            <StyleSettings />
           </div>
 
           <button

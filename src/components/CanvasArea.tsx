@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, Layer, Line, Rect, Stage } from 'react-konva';
+import { Circle, Layer, Line, Rect, RegularPolygon, Stage } from 'react-konva';
 import type Konva from 'konva';
 import { RotateCcw } from 'lucide-react';
 
@@ -7,11 +7,8 @@ import { useContainerSize } from '../hooks/useContainerSize';
 import { useStore } from '../store/useStore';
 import { getCurvePoints, getInterpolatedValue, getScreenKeyframes } from '../utils/animation';
 import {
-  CURVE_STROKE,
   CURVE_STROKE_WIDTH,
   CURVE_TENSION,
-  DOT_FILL,
-  DOT_RADIUS,
   MAX_VALUE,
   POINT_RADIUS,
   SAMPLE_STEP_MS,
@@ -59,6 +56,12 @@ export function CanvasArea() {
     setPixelsPerMs,
     setSelectedKeyframeIds,
     updateKeyframes,
+    curveColor,
+    curveOpacity,
+    dotColor,
+    dotOpacity,
+    dotShape,
+    dotSize,
   } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const panStateRef = useRef<{ startClientX: number; startTime: number; active: boolean }>({
@@ -436,7 +439,8 @@ export function CanvasArea() {
               {curvePoints.length > 3 && (
                 <Line
                   points={curvePoints}
-                  stroke={CURVE_STROKE}
+                  stroke={curveColor}
+                  opacity={curveOpacity}
                   strokeWidth={CURVE_STROKE_WIDTH}
                   lineJoin="round"
                   lineCap="round"
@@ -444,13 +448,40 @@ export function CanvasArea() {
                 />
               )}
 
-              <Circle
-                x={centerX}
-                y={markerY}
-                radius={DOT_RADIUS}
-                fill={DOT_FILL}
-                listening={false}
-              />
+              {dotShape === 'circle' && (
+                <Circle
+                  x={centerX}
+                  y={markerY}
+                  radius={dotSize}
+                  fill={dotColor}
+                  opacity={dotOpacity}
+                  listening={false}
+                />
+              )}
+              {dotShape === 'square' && (
+                <Rect
+                  x={centerX}
+                  y={markerY}
+                  width={dotSize * 2}
+                  height={dotSize * 2}
+                  offsetX={dotSize}
+                  offsetY={dotSize}
+                  fill={dotColor}
+                  opacity={dotOpacity}
+                  listening={false}
+                />
+              )}
+              {dotShape === 'triangle' && (
+                <RegularPolygon
+                  x={centerX}
+                  y={markerY}
+                  sides={3}
+                  radius={dotSize * 1.2}
+                  fill={dotColor}
+                  opacity={dotOpacity}
+                  listening={false}
+                />
+              )}
 
               {screenKeyframes.map((keyframe) => {
                 const isSelected = selectedKeyframeIds.includes(keyframe.id);
