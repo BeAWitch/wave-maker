@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Circle, Layer, Line, Stage } from 'react-konva';
 import type Konva from 'konva';
 import { RotateCcw } from 'lucide-react';
@@ -14,6 +14,12 @@ const POINT_RADIUS = 8;
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
 const DEFAULT_PIXELS_PER_MS = 1;
+const SNAP_THRESHOLD_PX = 10;
+
+interface SnapGuidesState {
+  horizontal: boolean;
+  vertical: boolean;
+}
 
 export function CanvasArea() {
   const {
@@ -33,6 +39,7 @@ export function CanvasArea() {
     startTime: 0,
     active: false,
   });
+  const [snapGuides, setSnapGuides] = useState<SnapGuidesState>({ horizontal: false, vertical: false });
   const size = useContainerSize(containerRef);
 
   const centerX = size.width / 2;
@@ -54,6 +61,20 @@ export function CanvasArea() {
 
   const currentValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
   const markerY = centerY - currentValue;
+
+  const getSnappedPosition = (position: { x: number; y: number }) => {
+    const clampedX = Math.max(minBoundX, Math.min(position.x, maxBoundX));
+    const clampedY = Math.max(topBoundY, Math.min(position.y, bottomBoundY));
+    const vertical = Math.abs(clampedX - centerX) <= SNAP_THRESHOLD_PX;
+    const horizontal = Math.abs(clampedY - centerY) <= SNAP_THRESHOLD_PX;
+
+    return {
+      x: vertical ? centerX : clampedX,
+      y: horizontal ? centerY : clampedY,
+      vertical,
+      horizontal,
+    };
+  };
 
   const handleKeyframeDrag = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
     const nextScreenX = event.target.x();
@@ -143,10 +164,25 @@ export function CanvasArea() {
             onPointerCancel={handleStagePointerUp}
           >
             <Layer>
-              <Line points={[0, centerY, size.width, centerY]} stroke="rgba(255,255,255,0.82)" strokeWidth={2} />
+              <Line
+                points={[0, centerY, size.width, centerY]}
+                stroke={snapGuides.horizontal ? 'rgba(251,191,36,0.95)' : 'rgba(255,255,255,0.82)'}
+                strokeWidth={snapGuides.horizontal ? 3 : 2}
+                shadowColor={snapGuides.horizontal ? 'rgba(251,191,36,0.6)' : 'transparent'}
+                shadowBlur={snapGuides.horizontal ? 12 : 0}
+                listening={false}
+              />
               <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
               <Line points={[0, bottomBoundY, size.width, bottomBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
-              <Line points={[centerX, 0, centerX, STAGE_HEIGHT]} stroke="rgba(255,255,255,0.12)" strokeWidth={1} dash={[8, 8]} />
+              <Line
+                points={[centerX, 0, centerX, STAGE_HEIGHT]}
+                stroke={snapGuides.vertical ? 'rgba(251,191,36,0.9)' : 'rgba(255,255,255,0.12)'}
+                strokeWidth={snapGuides.vertical ? 2 : 1}
+                dash={snapGuides.vertical ? [10, 6] : [8, 8]}
+                shadowColor={snapGuides.vertical ? 'rgba(251,191,36,0.55)' : 'transparent'}
+                shadowBlur={snapGuides.vertical ? 10 : 0}
+                listening={false}
+              />
 
               {curvePoints.length > 3 && (
                 <Line
@@ -177,18 +213,23 @@ export function CanvasArea() {
                   stroke={selectedKeyframeId === keyframe.id ? '#f59e0b' : '#fb923c'}
                   strokeWidth={selectedKeyframeId === keyframe.id ? 3 : 2}
                   draggable
-                  dragBoundFunc={(position) => ({
-                    x: Math.max(minBoundX, Math.min(position.x, maxBoundX)),
-                    y: Math.max(topBoundY, Math.min(position.y, bottomBoundY)),
-                  })}
+                  dragBoundFunc={(position) => getSnappedPosition(position)}
                   onPointerDown={() => {
                     setSelectedKeyframeId(keyframe.id);
                   }}
-                  onDragMove={(event) => handleKeyframeDrag(keyframe.id, event)}
-                  onDragEnd={(event) => handleKeyframeDrag(keyframe.id, event)}
+                  onDragMove={(event) => {
+                    const snappedPosition = getSnappedPosition({ x: event.target.x(), y: event.target.y() });
+                    setSnapGuides({ horizontal: snappedPosition.horizontal, vertical: snappedPosition.vertical });
+                    handleKeyframeDrag(keyframe.id, event);
+                  }}
+                  onDragEnd={(event) => {
+                    handleKeyframeDrag(keyframe.id, event);
+                    setSnapGuides({ horizontal: false, vertical: false });
+                  }}
                   onDragStart={() => {
                     panStateRef.current.active = false;
                     setSelectedKeyframeId(keyframe.id);
+                    setSnapGuides({ horizontal: false, vertical: false });
                   }}
                   onMouseEnter={() => {
                     document.body.style.cursor = 'grab';
