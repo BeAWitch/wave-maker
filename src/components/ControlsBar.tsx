@@ -23,7 +23,9 @@ export function ControlsBar() {
     setCurrentTime,
     setIsPlaying,
     addKeyframe,
+    copySelectedKeyframes,
     deleteSelectedKeyframes,
+    pasteKeyframesAtCurrentTime,
     updateSelectedKeyframesCurveType,
     updateSelectedKeyframesEasingMode,
   } = useStore();
@@ -40,7 +42,25 @@ export function ControlsBar() {
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
       );
 
-      if (isEditableTarget || event.key !== 'Delete' || selectedKeyframeIds.length === 0) {
+      if (isEditableTarget) {
+        return;
+      }
+
+      const isModifierPressed = event.ctrlKey || event.metaKey;
+
+      if (isModifierPressed && event.key.toLowerCase() === 'c' && selectedKeyframeIds.length > 0) {
+        event.preventDefault();
+        copySelectedKeyframes();
+        return;
+      }
+
+      if (isModifierPressed && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteKeyframesAtCurrentTime();
+        return;
+      }
+
+      if (event.key !== 'Delete' || selectedKeyframeIds.length === 0) {
         return;
       }
 
@@ -53,7 +73,7 @@ export function ControlsBar() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [deleteSelectedKeyframes, selectedKeyframeIds]);
+  }, [copySelectedKeyframes, deleteSelectedKeyframes, pasteKeyframesAtCurrentTime, selectedKeyframeIds]);
 
   return (
     <div className="w-full flex items-center justify-between px-6 py-3 bg-[#18181b] border-b border-zinc-800 shrink-0 shadow-sm z-10">

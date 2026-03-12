@@ -12,12 +12,20 @@ export interface Keyframe {
   easingMode: EasingMode;
 }
 
+interface ClipboardKeyframe {
+  timeOffset: number;
+  value: number;
+  curveType: CurveType;
+  easingMode: EasingMode;
+}
+
 interface AppState {
   currentTime: number;
   duration: number;
   isPlaying: boolean;
   keyframes: Keyframe[];
   selectedKeyframeIds: string[];
+  clipboardKeyframes: ClipboardKeyframe[];
   pixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
@@ -27,6 +35,8 @@ interface AppState {
   setPixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
   deleteSelectedKeyframes: () => void;
+  copySelectedKeyframes: () => void;
+  pasteKeyframesAtCurrentTime: () => void;
   updateSelectedKeyframesCurveType: (curveType: CurveType) => void;
   updateSelectedKeyframesEasingMode: (easingMode: EasingMode) => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
@@ -42,6 +52,7 @@ export const useStore = create<AppState>((set, get) => ({
   isPlaying: false,
   keyframes: [],
   selectedKeyframeIds: [],
+  clipboardKeyframes: [],
   pixelsPerMs: 0.12,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
@@ -97,6 +108,49 @@ export const useStore = create<AppState>((set, get) => ({
     set({
       keyframes: keyframes.filter((keyframe) => !selectedKeyframeIds.includes(keyframe.id)),
       selectedKeyframeIds: [],
+    });
+  },
+
+  copySelectedKeyframes: () => {
+    const { keyframes, selectedKeyframeIds } = get();
+    const selectedKeyframes = keyframes
+      .filter((keyframe) => selectedKeyframeIds.includes(keyframe.id))
+      .sort((a, b) => a.time - b.time);
+
+    if (selectedKeyframes.length === 0) {
+      return;
+    }
+
+    const firstTime = selectedKeyframes[0].time;
+
+    set({
+      clipboardKeyframes: selectedKeyframes.map((keyframe) => ({
+        timeOffset: keyframe.time - firstTime,
+        value: keyframe.value,
+        curveType: keyframe.curveType,
+        easingMode: keyframe.easingMode,
+      })),
+    });
+  },
+
+  pasteKeyframesAtCurrentTime: () => {
+    const { clipboardKeyframes, currentTime, duration, keyframes } = get();
+
+    if (clipboardKeyframes.length === 0) {
+      return;
+    }
+
+    const pastedKeyframes: Keyframe[] = clipboardKeyframes.map((clipboardKeyframe) => ({
+      id: Math.random().toString(36).substring(7),
+      time: Math.max(0, Math.min(currentTime + clipboardKeyframe.timeOffset, duration)),
+      value: clipboardKeyframe.value,
+      curveType: clipboardKeyframe.curveType,
+      easingMode: clipboardKeyframe.easingMode,
+    }));
+
+    set({
+      keyframes: [...keyframes, ...pastedKeyframes].sort((a, b) => a.time - b.time),
+      selectedKeyframeIds: pastedKeyframes.map((keyframe) => keyframe.id),
     });
   },
 
