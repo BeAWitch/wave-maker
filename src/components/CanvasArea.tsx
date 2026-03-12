@@ -21,8 +21,10 @@ export function CanvasArea() {
     duration,
     keyframes,
     pixelsPerMs,
+    selectedKeyframeId,
     setCurrentTime,
     setPixelsPerMs,
+    setSelectedKeyframeId,
     updateKeyframe,
   } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -77,6 +79,7 @@ export function CanvasArea() {
       return;
     }
 
+    setSelectedKeyframeId(null);
     panStateRef.current = {
       startClientX: event.evt.clientX,
       startTime: currentTime,
@@ -170,18 +173,22 @@ export function CanvasArea() {
                   x={keyframe.screenX}
                   y={keyframe.screenY}
                   radius={POINT_RADIUS}
-                  fill="#e5e7eb"
-                  stroke="#fb923c"
-                  strokeWidth={2}
+                  fill={selectedKeyframeId === keyframe.id ? '#fef3c7' : '#e5e7eb'}
+                  stroke={selectedKeyframeId === keyframe.id ? '#f59e0b' : '#fb923c'}
+                  strokeWidth={selectedKeyframeId === keyframe.id ? 3 : 2}
                   draggable
                   dragBoundFunc={(position) => ({
                     x: Math.max(minBoundX, Math.min(position.x, maxBoundX)),
                     y: Math.max(topBoundY, Math.min(position.y, bottomBoundY)),
                   })}
+                  onPointerDown={() => {
+                    setSelectedKeyframeId(keyframe.id);
+                  }}
                   onDragMove={(event) => handleKeyframeDrag(keyframe.id, event)}
                   onDragEnd={(event) => handleKeyframeDrag(keyframe.id, event)}
                   onDragStart={() => {
                     panStateRef.current.active = false;
+                    setSelectedKeyframeId(keyframe.id);
                   }}
                   onMouseEnter={() => {
                     document.body.style.cursor = 'grab';

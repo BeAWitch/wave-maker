@@ -13,15 +13,18 @@ interface AppState {
   duration: number;
   isPlaying: boolean;
   keyframes: Keyframe[];
+  selectedKeyframeId: string | null;
   selectedCurveType: Keyframe['easing'];
   pixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
+  setSelectedKeyframeId: (id: string | null) => void;
   setCurveType: (type: Keyframe['easing']) => void;
   setPixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
+  deleteSelectedKeyframe: () => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
 }
 
@@ -33,6 +36,7 @@ export const useStore = create<AppState>((set, get) => ({
   duration: 5000,
   isPlaying: false,
   keyframes: [],
+  selectedKeyframeId: null,
   selectedCurveType: 'linear',
   pixelsPerMs: 0.12,
 
@@ -45,6 +49,7 @@ export const useStore = create<AppState>((set, get) => ({
       .sort((a, b) => a.time - b.time),
   })),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
+  setSelectedKeyframeId: (id) => set({ selectedKeyframeId: id }),
   setCurveType: (type) => set({ selectedCurveType: type }),
   setPixelsPerMs: (pixelsPerMs) => set({
     pixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(pixelsPerMs, MAX_PIXELS_PER_MS)),
@@ -75,7 +80,21 @@ export const useStore = create<AppState>((set, get) => ({
       updatedKeyframes = [...keyframes, newKeyframe].sort((a, b) => a.time - b.time);
     }
 
-    set({ keyframes: updatedKeyframes });
+    const selectedKeyframeId = existingIndex >= 0 ? keyframes[existingIndex].id : newKeyframe.id;
+    set({ keyframes: updatedKeyframes, selectedKeyframeId });
+  },
+
+  deleteSelectedKeyframe: () => {
+    const { keyframes, selectedKeyframeId } = get();
+
+    if (!selectedKeyframeId) {
+      return;
+    }
+
+    set({
+      keyframes: keyframes.filter((keyframe) => keyframe.id !== selectedKeyframeId),
+      selectedKeyframeId: null,
+    });
   },
 
   updateKeyframe: (id, updates) => {

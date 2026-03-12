@@ -26,7 +26,7 @@ const parseTime = (str: string): number | null => {
 };
 
 export function Timeline() {
-  const { currentTime, duration, keyframes, setCurrentTime, setDuration } = useStore();
+  const { currentTime, duration, keyframes, selectedKeyframeId, setCurrentTime, setDuration, setSelectedKeyframeId } = useStore();
   const timelineRef = useRef<HTMLDivElement>(null);
   
   // Local state for editable time
@@ -190,12 +190,15 @@ export function Timeline() {
               className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rotate-45 border-[1.5px] border-zinc-900 z-10 cursor-pointer transition-transform hover:scale-125"
               style={{ 
                 left: `${(kf.time / duration) * 100}%`,
-                backgroundColor: '#3b82f6',
-                boxShadow: '0 0 8px rgba(59, 130, 246, 0.8)'
+                backgroundColor: selectedKeyframeId === kf.id ? '#f59e0b' : '#3b82f6',
+                boxShadow: selectedKeyframeId === kf.id
+                  ? '0 0 10px rgba(245, 158, 11, 0.9)'
+                  : '0 0 8px rgba(59, 130, 246, 0.8)'
               }}
               title={`Keyframe at ${kf.time}ms`}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                setSelectedKeyframeId(kf.id);
                 setCurrentTime(kf.time);
               }}
             />

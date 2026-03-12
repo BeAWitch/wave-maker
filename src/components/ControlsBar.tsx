@@ -1,8 +1,39 @@
-import { Play, Pause, CircleDot, Settings, Download } from 'lucide-react';
+import { useEffect } from 'react';
+import { Play, Pause, CircleDot, Settings, Download, Trash2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 export function ControlsBar() {
-  const { isPlaying, setIsPlaying, addKeyframe, selectedCurveType, setCurveType } = useStore();
+  const {
+    isPlaying,
+    selectedKeyframeId,
+    setIsPlaying,
+    addKeyframe,
+    deleteSelectedKeyframe,
+    selectedCurveType,
+    setCurveType,
+  } = useStore();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const isEditableTarget = target instanceof HTMLElement && (
+        target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+      );
+
+      if (isEditableTarget || event.key !== 'Delete' || !selectedKeyframeId) {
+        return;
+      }
+
+      event.preventDefault();
+      deleteSelectedKeyframe();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [deleteSelectedKeyframe, selectedKeyframeId]);
 
   return (
     <div className="w-full flex items-center justify-between px-6 py-3 bg-[#18181b] border-b border-zinc-800 shrink-0 shadow-sm z-10">
@@ -29,6 +60,17 @@ export function ControlsBar() {
           >
             <CircleDot size={16} className="text-emerald-400" />
             <span>Add Keyframe</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={deleteSelectedKeyframe}
+            disabled={!selectedKeyframeId}
+            className="flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm font-medium border disabled:cursor-not-allowed disabled:opacity-40 bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200"
+            title="Delete selected keyframe"
+          >
+            <Trash2 size={16} className="text-rose-400" />
+            <span>Delete Keyframe</span>
           </button>
           
           <div className="h-6 w-px bg-zinc-800" />
