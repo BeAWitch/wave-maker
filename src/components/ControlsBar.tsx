@@ -19,18 +19,19 @@ export function ControlsBar() {
   const {
     isPlaying,
     keyframes,
-    selectedKeyframeId,
+    selectedKeyframeIds,
     setCurrentTime,
     setIsPlaying,
     addKeyframe,
-    deleteSelectedKeyframe,
-    updateSelectedKeyframeCurveType,
-    updateSelectedKeyframeEasingMode,
+    deleteSelectedKeyframes,
+    updateSelectedKeyframesCurveType,
+    updateSelectedKeyframesEasingMode,
   } = useStore();
 
-  const selectedKeyframe = keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null;
-  const canEditCurve = Boolean(selectedKeyframe);
-  const canEditEasing = Boolean(selectedKeyframe);
+  const selectedKeyframes = keyframes.filter((keyframe) => selectedKeyframeIds.includes(keyframe.id));
+  const firstSelectedKeyframe = selectedKeyframes[0] ?? null;
+  const canEditCurve = selectedKeyframes.length > 0;
+  const canEditEasing = selectedKeyframes.length > 0;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -39,12 +40,12 @@ export function ControlsBar() {
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
       );
 
-      if (isEditableTarget || event.key !== 'Delete' || !selectedKeyframeId) {
+      if (isEditableTarget || event.key !== 'Delete' || selectedKeyframeIds.length === 0) {
         return;
       }
 
       event.preventDefault();
-      deleteSelectedKeyframe();
+      deleteSelectedKeyframes();
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -52,7 +53,7 @@ export function ControlsBar() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [deleteSelectedKeyframe, selectedKeyframeId]);
+  }, [deleteSelectedKeyframes, selectedKeyframeIds]);
 
   return (
     <div className="w-full flex items-center justify-between px-6 py-3 bg-[#18181b] border-b border-zinc-800 shrink-0 shadow-sm z-10">
@@ -95,13 +96,13 @@ export function ControlsBar() {
 
           <button
             type="button"
-            onClick={deleteSelectedKeyframe}
-            disabled={!selectedKeyframeId}
+            onClick={deleteSelectedKeyframes}
+            disabled={selectedKeyframeIds.length === 0}
             className="flex items-center gap-2 px-3 py-2 rounded-md transition-colors text-sm font-medium border disabled:cursor-not-allowed disabled:opacity-40 bg-zinc-800 hover:bg-zinc-700 border-zinc-700 text-zinc-200"
-            title="Delete selected keyframe"
+            title="Delete selected keyframes"
           >
             <Trash2 size={16} className="text-rose-400" />
-            <span>Delete Keyframe</span>
+            <span>Delete Keyframes</span>
           </button>
           
           <div className="h-6 w-px bg-zinc-800" />
@@ -111,8 +112,8 @@ export function ControlsBar() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-zinc-400">Curve Type:</span>
               <select
-                value={selectedKeyframe?.curveType ?? 'linear'}
-                onChange={(e) => updateSelectedKeyframeCurveType(e.target.value as CurveType)}
+                value={firstSelectedKeyframe?.curveType ?? 'linear'}
+                onChange={(e) => updateSelectedKeyframesCurveType(e.target.value as CurveType)}
                 disabled={!canEditCurve}
                 className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-28 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -126,8 +127,8 @@ export function ControlsBar() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-zinc-400">Easing:</span>
               <select
-                value={selectedKeyframe?.easingMode ?? 'easeInOut'}
-                onChange={(e) => updateSelectedKeyframeEasingMode(e.target.value as EasingMode)}
+                value={firstSelectedKeyframe?.easingMode ?? 'easeInOut'}
+                onChange={(e) => updateSelectedKeyframesEasingMode(e.target.value as EasingMode)}
                 disabled={!canEditEasing}
                 className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-30 disabled:cursor-not-allowed disabled:opacity-40"
               >

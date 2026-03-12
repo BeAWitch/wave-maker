@@ -17,19 +17,20 @@ interface AppState {
   duration: number;
   isPlaying: boolean;
   keyframes: Keyframe[];
-  selectedKeyframeId: string | null;
+  selectedKeyframeIds: string[];
   pixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
-  setSelectedKeyframeId: (id: string | null) => void;
+  setSelectedKeyframeIds: (ids: string[]) => void;
   setPixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
-  deleteSelectedKeyframe: () => void;
-  updateSelectedKeyframeCurveType: (curveType: CurveType) => void;
-  updateSelectedKeyframeEasingMode: (easingMode: EasingMode) => void;
+  deleteSelectedKeyframes: () => void;
+  updateSelectedKeyframesCurveType: (curveType: CurveType) => void;
+  updateSelectedKeyframesEasingMode: (easingMode: EasingMode) => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
+  updateKeyframes: (updatesById: Record<string, Partial<Keyframe>>) => void;
 }
 
 const MIN_PIXELS_PER_MS = 0.03;
@@ -40,7 +41,7 @@ export const useStore = create<AppState>((set, get) => ({
   duration: 5000,
   isPlaying: false,
   keyframes: [],
-  selectedKeyframeId: null,
+  selectedKeyframeIds: [],
   pixelsPerMs: 0.12,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
@@ -52,7 +53,7 @@ export const useStore = create<AppState>((set, get) => ({
       .sort((a, b) => a.time - b.time),
   })),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
-  setSelectedKeyframeId: (id) => set({ selectedKeyframeId: id }),
+  setSelectedKeyframeIds: (ids) => set({ selectedKeyframeIds: [...new Set(ids)] }),
   setPixelsPerMs: (pixelsPerMs) => set({
     pixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(pixelsPerMs, MAX_PIXELS_PER_MS)),
   }),
@@ -83,49 +84,57 @@ export const useStore = create<AppState>((set, get) => ({
     }
 
     const selectedKeyframeId = existingIndex >= 0 ? keyframes[existingIndex].id : newKeyframe.id;
-    set({ keyframes: updatedKeyframes, selectedKeyframeId });
+    set({ keyframes: updatedKeyframes, selectedKeyframeIds: [selectedKeyframeId] });
   },
 
-  deleteSelectedKeyframe: () => {
-    const { keyframes, selectedKeyframeId } = get();
+  deleteSelectedKeyframes: () => {
+    const { keyframes, selectedKeyframeIds } = get();
 
-    if (!selectedKeyframeId) {
+    if (selectedKeyframeIds.length === 0) {
       return;
     }
 
     set({
-      keyframes: keyframes.filter((keyframe) => keyframe.id !== selectedKeyframeId),
-      selectedKeyframeId: null,
+      keyframes: keyframes.filter((keyframe) => !selectedKeyframeIds.includes(keyframe.id)),
+      selectedKeyframeIds: [],
     });
   },
 
-  updateSelectedKeyframeCurveType: (curveType) => {
-    const { selectedKeyframeId } = get();
+  updateSelectedKeyframesCurveType: (curveType) => {
+    const { selectedKeyframeIds } = get();
 
-    if (!selectedKeyframeId) {
+    if (selectedKeyframeIds.length === 0) {
       return;
     }
 
-    get().updateKeyframe(selectedKeyframeId, { curveType });
+    const updatesById = Object.fromEntries(selectedKeyframeIds.map((id) => [id, { curveType }]));
+    get().updateKeyframes(updatesById);
   },
 
-  updateSelectedKeyframeEasingMode: (easingMode) => {
-    const { selectedKeyframeId } = get();
+  updateSelectedKeyframesEasingMode: (easingMode) => {
+    const { selectedKeyframeIds } = get();
 
-    if (!selectedKeyframeId) {
+    if (selectedKeyframeIds.length === 0) {
       return;
     }
 
-    get().updateKeyframe(selectedKeyframeId, { easingMode });
+    const updatesById = Object.fromEntries(selectedKeyframeIds.map((id) => [id, { easingMode }]));
+    get().updateKeyframes(updatesById);
   },
 
   updateKeyframe: (id, updates) => {
+    get().updateKeyframes({ [id]: updates });
+  },
+
+  updateKeyframes: (updatesById) => {
     const duration = get().duration;
 
     set((state) => ({
       keyframes: state.keyframes
         .map((kf) => {
-          if (kf.id !== id) {
+          const updates = updatesById[kf.id];
+
+          if (!updates) {
             return kf;
           }
 

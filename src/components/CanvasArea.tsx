@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { Circle, Layer, Line, Stage } from 'react-konva';
+import { Circle, Layer, Line, Rect, Stage } from 'react-konva';
 import type Konva from 'konva';
 import { RotateCcw } from 'lucide-react';
 
@@ -14,14 +14,31 @@ const POINT_RADIUS = 8;
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
 const DEFAULT_PIXELS_PER_MS = 1;
-const SNAP_THRESHOLD_PX = 10;
+const SNAP_THRESHOLD_PX = 6;
 const TIMELINE_BLUE = '#3b82f6';
+const CENTER_GUIDE_YELLOW = 'rgba(251,191,36,0.95)';
 
 interface SnapGuidesState {
   horizontal: boolean;
   vertical: boolean;
   leftBoundary: boolean;
   rightBoundary: boolean;
+  topBoundary: boolean;
+  bottomBoundary: boolean;
+}
+
+interface MarqueeState {
+  active: boolean;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+}
+
+interface GroupDragState {
+  active: boolean;
+  anchorId: string | null;
+  initialById: Record<string, { screenX: number; screenY: number; time: number; value: number }>;
 }
 
 export function CanvasArea() {
@@ -30,11 +47,11 @@ export function CanvasArea() {
     duration,
     keyframes,
     pixelsPerMs,
-    selectedKeyframeId,
+    selectedKeyframeIds,
     setCurrentTime,
     setPixelsPerMs,
-    setSelectedKeyframeId,
-    updateKeyframe,
+    setSelectedKeyframeIds,
+    updateKeyframes,
   } = useStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const panStateRef = useRef<{ startClientX: number; startTime: number; active: boolean }>({
@@ -42,11 +59,17 @@ export function CanvasArea() {
     startTime: 0,
     active: false,
   });
+  const initialMarqueeState: MarqueeState = { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
+  const marqueeStateRef = useRef<MarqueeState>(initialMarqueeState);
+  const groupDragStateRef = useRef<GroupDragState>({ active: false, anchorId: null, initialById: {} });
+  const [marqueeState, setMarqueeState] = useState<MarqueeState>(initialMarqueeState);
   const [snapGuides, setSnapGuides] = useState<SnapGuidesState>({
     horizontal: false,
     vertical: false,
     leftBoundary: false,
     rightBoundary: false,
+    topBoundary: false,
+    bottomBoundary: false,
   });
   const size = useContainerSize(containerRef);
 
@@ -62,6 +85,11 @@ export function CanvasArea() {
     [centerX, centerY, currentTime, keyframes, pixelsPerMs]
   );
 
+  const screenKeyframesById = useMemo(
+    () => Object.fromEntries(screenKeyframes.map((keyframe) => [keyframe.id, keyframe])),
+    [screenKeyframes]
+  );
+
   const curvePoints = useMemo(
     () => getCurvePoints(keyframes, currentTime, size.width, centerX, centerY, pixelsPerMs, SAMPLE_STEP_MS),
     [centerX, centerY, currentTime, keyframes, pixelsPerMs, size.width]
@@ -70,6 +98,22 @@ export function CanvasArea() {
   const currentValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
   const markerY = centerY - currentValue;
 
+  const resetSnapGuides = () => {
+    setSnapGuides({
+      horizontal: false,
+      vertical: false,
+      leftBoundary: false,
+      rightBoundary: false,
+      topBoundary: false,
+      bottomBoundary: false,
+    });
+  };
+
+  const setMarquee = (nextState: MarqueeState) => {
+    marqueeStateRef.current = nextState;
+    setMarqueeState(nextState);
+  };
+
   const getSnappedPosition = (position: { x: number; y: number }) => {
     const clampedX = Math.max(minBoundX, Math.min(position.x, maxBoundX));
     const clampedY = Math.max(topBoundY, Math.min(position.y, bottomBoundY));
@@ -77,8 +121,11 @@ export function CanvasArea() {
     const horizontal = Math.abs(clampedY - centerY) <= SNAP_THRESHOLD_PX;
     const leftBoundary = Math.abs(position.x - minBoundX) <= SNAP_THRESHOLD_PX || position.x < minBoundX;
     const rightBoundary = Math.abs(position.x - maxBoundX) <= SNAP_THRESHOLD_PX || position.x > maxBoundX;
+    const topBoundary = Math.abs(position.y - topBoundY) <= SNAP_THRESHOLD_PX || position.y < topBoundY;
+    const bottomBoundary = Math.abs(position.y - bottomBoundY) <= SNAP_THRESHOLD_PX || position.y > bottomBoundY;
 
     let snappedX = clampedX;
+    let snappedY = clampedY;
 
     if (leftBoundary) {
       snappedX = minBoundX;
@@ -88,26 +135,24 @@ export function CanvasArea() {
       snappedX = centerX;
     }
 
+    if (topBoundary) {
+      snappedY = topBoundY;
+    } else if (bottomBoundary) {
+      snappedY = bottomBoundY;
+    } else if (horizontal) {
+      snappedY = centerY;
+    }
+
     return {
       x: snappedX,
-      y: horizontal ? centerY : clampedY,
+      y: snappedY,
       vertical,
       horizontal,
       leftBoundary,
       rightBoundary,
+      topBoundary,
+      bottomBoundary,
     };
-  };
-
-  const handleKeyframeDrag = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
-    const nextScreenX = event.target.x();
-    const nextScreenY = event.target.y();
-    const nextTime = currentTime + (nextScreenX - centerX) / pixelsPerMs;
-    const nextValue = centerY - nextScreenY;
-
-    updateKeyframe(id, {
-      time: Math.max(0, Math.min(nextTime, duration)),
-      value: Math.max(-MAX_VALUE, Math.min(nextValue, MAX_VALUE)),
-    });
   };
 
   const handleWheel = (event: Konva.KonvaEventObject<WheelEvent>) => {
@@ -122,32 +167,164 @@ export function CanvasArea() {
       return;
     }
 
-    setSelectedKeyframeId(null);
-    panStateRef.current = {
-      startClientX: event.evt.clientX,
-      startTime: currentTime,
+    const stage = event.target.getStage();
+    const pointerPosition = stage?.getPointerPosition();
+
+    if (!pointerPosition) {
+      return;
+    }
+
+    if (event.evt.button === 1) {
+      panStateRef.current = {
+        startClientX: event.evt.clientX,
+        startTime: currentTime,
+        active: true,
+      };
+      document.body.style.cursor = 'grabbing';
+      return;
+    }
+
+    if (event.evt.button !== 0) {
+      return;
+    }
+
+    setSelectedKeyframeIds([]);
+    setMarquee({
       active: true,
-    };
-    document.body.style.cursor = 'grabbing';
+      startX: pointerPosition.x,
+      startY: pointerPosition.y,
+      currentX: pointerPosition.x,
+      currentY: pointerPosition.y,
+    });
   };
 
   const handleStagePointerMove = (event: Konva.KonvaEventObject<PointerEvent>) => {
-    if (!panStateRef.current.active) {
+    if (panStateRef.current.active) {
+      const deltaX = event.evt.clientX - panStateRef.current.startClientX;
+      const nextTime = panStateRef.current.startTime - deltaX / pixelsPerMs;
+      setCurrentTime(nextTime);
       return;
     }
 
-    const deltaX = event.evt.clientX - panStateRef.current.startClientX;
-    const nextTime = panStateRef.current.startTime - deltaX / pixelsPerMs;
-    setCurrentTime(nextTime);
+    if (!marqueeStateRef.current.active) {
+      return;
+    }
+
+    const stage = event.target.getStage();
+    const pointerPosition = stage?.getPointerPosition();
+
+    if (!pointerPosition) {
+      return;
+    }
+
+    setMarquee({
+      ...marqueeStateRef.current,
+      currentX: pointerPosition.x,
+      currentY: pointerPosition.y,
+    });
+  };
+
+  const finalizeMarqueeSelection = () => {
+    const { startX, startY, currentX, currentY } = marqueeStateRef.current;
+    const left = Math.min(startX, currentX);
+    const right = Math.max(startX, currentX);
+    const top = Math.min(startY, currentY);
+    const bottom = Math.max(startY, currentY);
+
+    const selectedIds = screenKeyframes
+      .filter((keyframe) => keyframe.screenX >= left && keyframe.screenX <= right && keyframe.screenY >= top && keyframe.screenY <= bottom)
+      .map((keyframe) => keyframe.id);
+
+    setSelectedKeyframeIds(selectedIds);
+    setMarquee({ active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 });
   };
 
   const handleStagePointerUp = () => {
-    if (!panStateRef.current.active) {
+    if (panStateRef.current.active) {
+      panStateRef.current.active = false;
+      document.body.style.cursor = 'default';
+    }
+
+    if (marqueeStateRef.current.active) {
+      finalizeMarqueeSelection();
+    }
+  };
+
+  const handleKeyframeDragStart = (keyframeId: string) => {
+    panStateRef.current.active = false;
+    resetSnapGuides();
+
+    const selection = selectedKeyframeIds.includes(keyframeId) ? selectedKeyframeIds : [keyframeId];
+    setSelectedKeyframeIds(selection);
+
+    const initialById = Object.fromEntries(
+      selection
+        .map((id) => {
+          const keyframe = screenKeyframesById[id];
+
+          if (!keyframe) {
+            return null;
+          }
+
+          return [id, { screenX: keyframe.screenX, screenY: keyframe.screenY, time: keyframe.time, value: keyframe.value }] as const;
+        })
+        .filter((entry): entry is readonly [string, { screenX: number; screenY: number; time: number; value: number }] => entry !== null)
+    );
+
+    groupDragStateRef.current = {
+      active: true,
+      anchorId: keyframeId,
+      initialById,
+    };
+  };
+
+  const handleKeyframeDragMove = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    const snappedPosition = getSnappedPosition({ x: event.target.x(), y: event.target.y() });
+    setSnapGuides({
+      horizontal: snappedPosition.horizontal,
+      vertical: snappedPosition.vertical,
+      leftBoundary: snappedPosition.leftBoundary,
+      rightBoundary: snappedPosition.rightBoundary,
+      topBoundary: snappedPosition.topBoundary,
+      bottomBoundary: snappedPosition.bottomBoundary,
+    });
+
+    const anchorInitial = groupDragStateRef.current.initialById[id];
+
+    if (!anchorInitial) {
       return;
     }
 
-    panStateRef.current.active = false;
-    document.body.style.cursor = 'default';
+    const deltaX = snappedPosition.x - anchorInitial.screenX;
+    const deltaY = snappedPosition.y - anchorInitial.screenY;
+    const updatesById: Record<string, { time: number; value: number }> = {};
+
+    for (const [keyframeId, initial] of Object.entries(groupDragStateRef.current.initialById)) {
+      const nextScreenPosition = getSnappedPosition({
+        x: initial.screenX + deltaX,
+        y: initial.screenY + deltaY,
+      });
+
+      updatesById[keyframeId] = {
+        time: Math.max(0, Math.min(currentTime + (nextScreenPosition.x - centerX) / pixelsPerMs, duration)),
+        value: Math.max(-MAX_VALUE, Math.min(centerY - nextScreenPosition.y, MAX_VALUE)),
+      };
+    }
+
+    updateKeyframes(updatesById);
+  };
+
+  const handleKeyframeDragEnd = (id: string, event: Konva.KonvaEventObject<DragEvent>) => {
+    handleKeyframeDragMove(id, event);
+    groupDragStateRef.current = { active: false, anchorId: null, initialById: {} };
+    resetSnapGuides();
+  };
+
+  const marqueeRect = {
+    x: Math.min(marqueeState.startX, marqueeState.currentX),
+    y: Math.min(marqueeState.startY, marqueeState.currentY),
+    width: Math.abs(marqueeState.currentX - marqueeState.startX),
+    height: Math.abs(marqueeState.currentY - marqueeState.startY),
   };
 
   return (
@@ -188,18 +365,32 @@ export function CanvasArea() {
             <Layer>
               <Line
                 points={[0, centerY, size.width, centerY]}
-                stroke={snapGuides.horizontal ? 'rgba(251,191,36,0.95)' : 'rgba(255,255,255,0.12)'}
+                stroke={snapGuides.horizontal ? CENTER_GUIDE_YELLOW : 'rgba(255,255,255,0.12)'}
                 strokeWidth={snapGuides.horizontal ? 2 : 1}
                 dash={snapGuides.horizontal ? [10, 6] : [8, 8]}
                 shadowColor={snapGuides.horizontal ? 'rgba(251,191,36,0.6)' : 'transparent'}
                 shadowBlur={snapGuides.horizontal ? 12 : 0}
                 listening={false}
               />
-              <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.62)" strokeWidth={2} />
-              <Line points={[0, bottomBoundY, size.width, bottomBoundY]} stroke="rgba(255,255,255,0.62)" strokeWidth={2} />
+              <Line
+                points={[0, topBoundY, size.width, topBoundY]}
+                stroke={snapGuides.topBoundary ? CENTER_GUIDE_YELLOW : 'rgba(255,255,255,0.62)'}
+                strokeWidth={snapGuides.topBoundary ? 3 : 2}
+                shadowColor={snapGuides.topBoundary ? 'rgba(251,191,36,0.6)' : 'transparent'}
+                shadowBlur={snapGuides.topBoundary ? 12 : 0}
+                listening={false}
+              />
+              <Line
+                points={[0, bottomBoundY, size.width, bottomBoundY]}
+                stroke={snapGuides.bottomBoundary ? CENTER_GUIDE_YELLOW : 'rgba(255,255,255,0.62)'}
+                strokeWidth={snapGuides.bottomBoundary ? 3 : 2}
+                shadowColor={snapGuides.bottomBoundary ? 'rgba(251,191,36,0.6)' : 'transparent'}
+                shadowBlur={snapGuides.bottomBoundary ? 12 : 0}
+                listening={false}
+              />
               <Line
                 points={[centerX, 0, centerX, STAGE_HEIGHT]}
-                stroke={snapGuides.vertical ? 'rgba(251,191,36,0.9)' : 'rgba(255,255,255,0.12)'}
+                stroke={snapGuides.vertical ? CENTER_GUIDE_YELLOW : 'rgba(255,255,255,0.12)'}
                 strokeWidth={snapGuides.vertical ? 2 : 1}
                 dash={snapGuides.vertical ? [10, 6] : [8, 8]}
                 shadowColor={snapGuides.vertical ? 'rgba(251,191,36,0.55)' : 'transparent'}
@@ -244,51 +435,64 @@ export function CanvasArea() {
                 listening={false}
               />
 
-              {screenKeyframes.map((keyframe) => (
-                <Circle
-                  key={keyframe.id}
-                  x={keyframe.screenX}
-                  y={keyframe.screenY}
-                  radius={POINT_RADIUS}
-                  fill={selectedKeyframeId === keyframe.id ? '#fef3c7' : '#e5e7eb'}
-                  stroke={selectedKeyframeId === keyframe.id ? '#f59e0b' : '#fb923c'}
-                  strokeWidth={selectedKeyframeId === keyframe.id ? 3 : 2}
-                  draggable
-                  dragBoundFunc={(position) => getSnappedPosition(position)}
-                  onPointerDown={() => {
-                    setSelectedKeyframeId(keyframe.id);
-                  }}
-                  onDragMove={(event) => {
-                    const snappedPosition = getSnappedPosition({ x: event.target.x(), y: event.target.y() });
-                    setSnapGuides({
-                      horizontal: snappedPosition.horizontal,
-                      vertical: snappedPosition.vertical,
-                      leftBoundary: snappedPosition.leftBoundary,
-                      rightBoundary: snappedPosition.rightBoundary,
-                    });
-                    handleKeyframeDrag(keyframe.id, event);
-                  }}
-                  onDragEnd={(event) => {
-                    handleKeyframeDrag(keyframe.id, event);
-                    setSnapGuides({ horizontal: false, vertical: false, leftBoundary: false, rightBoundary: false });
-                  }}
-                  onDragStart={() => {
-                    panStateRef.current.active = false;
-                    setSelectedKeyframeId(keyframe.id);
-                    setSnapGuides({ horizontal: false, vertical: false, leftBoundary: false, rightBoundary: false });
-                  }}
-                  onMouseEnter={() => {
-                    document.body.style.cursor = 'grab';
-                  }}
-                  onMouseLeave={() => {
-                    if (!panStateRef.current.active) {
-                      document.body.style.cursor = 'default';
-                    }
-                  }}
-                  shadowColor="rgba(251,146,60,0.45)"
-                  shadowBlur={10}
+              {screenKeyframes.map((keyframe) => {
+                const isSelected = selectedKeyframeIds.includes(keyframe.id);
+
+                return (
+                  <Circle
+                    key={keyframe.id}
+                    x={keyframe.screenX}
+                    y={keyframe.screenY}
+                    radius={POINT_RADIUS}
+                    fill={isSelected ? '#fef3c7' : '#e5e7eb'}
+                    stroke={isSelected ? '#f59e0b' : '#fb923c'}
+                    strokeWidth={isSelected ? 3 : 2}
+                    draggable
+                    dragBoundFunc={(position) => {
+                      const snappedPosition = getSnappedPosition(position);
+                      return { x: snappedPosition.x, y: snappedPosition.y };
+                    }}
+                    onPointerDown={(event) => {
+                      event.cancelBubble = true;
+                      const nextSelection = selectedKeyframeIds.includes(keyframe.id) ? selectedKeyframeIds : [keyframe.id];
+                      setSelectedKeyframeIds(nextSelection);
+                    }}
+                    onDragStart={() => {
+                      handleKeyframeDragStart(keyframe.id);
+                    }}
+                    onDragMove={(event) => {
+                      handleKeyframeDragMove(keyframe.id, event);
+                    }}
+                    onDragEnd={(event) => {
+                      handleKeyframeDragEnd(keyframe.id, event);
+                    }}
+                    onMouseEnter={() => {
+                      document.body.style.cursor = 'grab';
+                    }}
+                    onMouseLeave={() => {
+                      if (!panStateRef.current.active) {
+                        document.body.style.cursor = 'default';
+                      }
+                    }}
+                    shadowColor="rgba(251,146,60,0.45)"
+                    shadowBlur={10}
+                  />
+                );
+              })}
+
+              {marqueeState.active && marqueeRect.width > 0 && marqueeRect.height > 0 && (
+                <Rect
+                  x={marqueeRect.x}
+                  y={marqueeRect.y}
+                  width={marqueeRect.width}
+                  height={marqueeRect.height}
+                  fill="rgba(59,130,246,0.12)"
+                  stroke="rgba(59,130,246,0.9)"
+                  strokeWidth={1}
+                  dash={[6, 4]}
+                  listening={false}
                 />
-              ))}
+              )}
             </Layer>
           </Stage>
         )}
