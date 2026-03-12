@@ -15,10 +15,13 @@ const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
 const DEFAULT_PIXELS_PER_MS = 1;
 const SNAP_THRESHOLD_PX = 10;
+const TIMELINE_BLUE = '#3b82f6';
 
 interface SnapGuidesState {
   horizontal: boolean;
   vertical: boolean;
+  leftBoundary: boolean;
+  rightBoundary: boolean;
 }
 
 export function CanvasArea() {
@@ -39,7 +42,12 @@ export function CanvasArea() {
     startTime: 0,
     active: false,
   });
-  const [snapGuides, setSnapGuides] = useState<SnapGuidesState>({ horizontal: false, vertical: false });
+  const [snapGuides, setSnapGuides] = useState<SnapGuidesState>({
+    horizontal: false,
+    vertical: false,
+    leftBoundary: false,
+    rightBoundary: false,
+  });
   const size = useContainerSize(containerRef);
 
   const centerX = size.width / 2;
@@ -67,12 +75,26 @@ export function CanvasArea() {
     const clampedY = Math.max(topBoundY, Math.min(position.y, bottomBoundY));
     const vertical = Math.abs(clampedX - centerX) <= SNAP_THRESHOLD_PX;
     const horizontal = Math.abs(clampedY - centerY) <= SNAP_THRESHOLD_PX;
+    const leftBoundary = Math.abs(position.x - minBoundX) <= SNAP_THRESHOLD_PX || position.x < minBoundX;
+    const rightBoundary = Math.abs(position.x - maxBoundX) <= SNAP_THRESHOLD_PX || position.x > maxBoundX;
+
+    let snappedX = clampedX;
+
+    if (leftBoundary) {
+      snappedX = minBoundX;
+    } else if (rightBoundary) {
+      snappedX = maxBoundX;
+    } else if (vertical) {
+      snappedX = centerX;
+    }
 
     return {
-      x: vertical ? centerX : clampedX,
+      x: snappedX,
       y: horizontal ? centerY : clampedY,
       vertical,
       horizontal,
+      leftBoundary,
+      rightBoundary,
     };
   };
 
@@ -166,14 +188,15 @@ export function CanvasArea() {
             <Layer>
               <Line
                 points={[0, centerY, size.width, centerY]}
-                stroke={snapGuides.horizontal ? 'rgba(251,191,36,0.95)' : 'rgba(255,255,255,0.82)'}
-                strokeWidth={snapGuides.horizontal ? 3 : 2}
+                stroke={snapGuides.horizontal ? 'rgba(251,191,36,0.95)' : 'rgba(255,255,255,0.12)'}
+                strokeWidth={snapGuides.horizontal ? 2 : 1}
+                dash={snapGuides.horizontal ? [10, 6] : [8, 8]}
                 shadowColor={snapGuides.horizontal ? 'rgba(251,191,36,0.6)' : 'transparent'}
                 shadowBlur={snapGuides.horizontal ? 12 : 0}
                 listening={false}
               />
-              <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
-              <Line points={[0, bottomBoundY, size.width, bottomBoundY]} stroke="rgba(255,255,255,0.42)" strokeWidth={2} />
+              <Line points={[0, topBoundY, size.width, topBoundY]} stroke="rgba(255,255,255,0.62)" strokeWidth={2} />
+              <Line points={[0, bottomBoundY, size.width, bottomBoundY]} stroke="rgba(255,255,255,0.62)" strokeWidth={2} />
               <Line
                 points={[centerX, 0, centerX, STAGE_HEIGHT]}
                 stroke={snapGuides.vertical ? 'rgba(251,191,36,0.9)' : 'rgba(255,255,255,0.12)'}
@@ -181,6 +204,24 @@ export function CanvasArea() {
                 dash={snapGuides.vertical ? [10, 6] : [8, 8]}
                 shadowColor={snapGuides.vertical ? 'rgba(251,191,36,0.55)' : 'transparent'}
                 shadowBlur={snapGuides.vertical ? 10 : 0}
+                listening={false}
+              />
+              <Line
+                points={[minBoundX, 0, minBoundX, STAGE_HEIGHT]}
+                stroke={snapGuides.leftBoundary ? TIMELINE_BLUE : 'rgba(255,255,255,0.28)'}
+                strokeWidth={snapGuides.leftBoundary ? 2 : 1}
+                dash={snapGuides.leftBoundary ? [10, 6] : [6, 10]}
+                shadowColor={snapGuides.leftBoundary ? 'rgba(59,130,246,0.55)' : 'transparent'}
+                shadowBlur={snapGuides.leftBoundary ? 10 : 0}
+                listening={false}
+              />
+              <Line
+                points={[maxBoundX, 0, maxBoundX, STAGE_HEIGHT]}
+                stroke={snapGuides.rightBoundary ? TIMELINE_BLUE : 'rgba(255,255,255,0.28)'}
+                strokeWidth={snapGuides.rightBoundary ? 2 : 1}
+                dash={snapGuides.rightBoundary ? [10, 6] : [6, 10]}
+                shadowColor={snapGuides.rightBoundary ? 'rgba(59,130,246,0.55)' : 'transparent'}
+                shadowBlur={snapGuides.rightBoundary ? 10 : 0}
                 listening={false}
               />
 
@@ -219,17 +260,22 @@ export function CanvasArea() {
                   }}
                   onDragMove={(event) => {
                     const snappedPosition = getSnappedPosition({ x: event.target.x(), y: event.target.y() });
-                    setSnapGuides({ horizontal: snappedPosition.horizontal, vertical: snappedPosition.vertical });
+                    setSnapGuides({
+                      horizontal: snappedPosition.horizontal,
+                      vertical: snappedPosition.vertical,
+                      leftBoundary: snappedPosition.leftBoundary,
+                      rightBoundary: snappedPosition.rightBoundary,
+                    });
                     handleKeyframeDrag(keyframe.id, event);
                   }}
                   onDragEnd={(event) => {
                     handleKeyframeDrag(keyframe.id, event);
-                    setSnapGuides({ horizontal: false, vertical: false });
+                    setSnapGuides({ horizontal: false, vertical: false, leftBoundary: false, rightBoundary: false });
                   }}
                   onDragStart={() => {
                     panStateRef.current.active = false;
                     setSelectedKeyframeId(keyframe.id);
-                    setSnapGuides({ horizontal: false, vertical: false });
+                    setSnapGuides({ horizontal: false, vertical: false, leftBoundary: false, rightBoundary: false });
                   }}
                   onMouseEnter={() => {
                     document.body.style.cursor = 'grab';
