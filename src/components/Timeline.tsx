@@ -1,8 +1,24 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useStore } from '../store/useStore';
-import { Clock } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Clock, RotateCcw } from 'lucide-react';
 
-// Format helper MM:SS.ms (e.g. 00:02.59)
+import { useContainerSize } from '../hooks/useContainerSize';
+import { useStore } from '../store/useStore';
+
+const ZOOM_IN_FACTOR = 1.1;
+const ZOOM_OUT_FACTOR = 0.9;
+const DEFAULT_TIMELINE_PIXELS_PER_MS = 1;
+
+interface GroupDragState {
+  active: boolean;
+  anchorId: string | null;
+  initialTimes: Record<string, number>;
+  startClientX: number;
+}
+
+interface ScrubState {
+  active: boolean;
+}
+
 const formatTime = (ms: number) => {
   const totalSeconds = ms / 1000;
   const minutes = Math.floor(totalSeconds / 60);
@@ -10,60 +26,137 @@ const formatTime = (ms: number) => {
   return `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(2).padStart(5, '0')}`;
 };
 
-// Parse helper to ms
 const parseTime = (str: string): number | null => {
   const parts = str.split(':');
   if (parts.length === 1) {
-    const s = parseFloat(parts[0]);
-    if (isNaN(s)) return null;
-    return Math.round(s * 1000);
+    const seconds = parseFloat(parts[0]);
+    if (Number.isNaN(seconds)) return null;
+    return Math.round(seconds * 1000);
   }
   if (parts.length !== 2) return null;
-  const m = parseInt(parts[0], 10);
-  const s = parseFloat(parts[1]);
-  if (isNaN(m) || isNaN(s)) return null;
-  return Math.round((m * 60 + s) * 1000);
+  const minutes = parseInt(parts[0], 10);
+  const seconds = parseFloat(parts[1]);
+  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return null;
+  return Math.round((minutes * 60 + seconds) * 1000);
 };
 
 export function Timeline() {
-  const { currentTime, duration, keyframes, selectedKeyframeIds, setCurrentTime, setDuration, setSelectedKeyframeIds } = useStore();
+  const {
+    currentTime,
+    duration,
+    keyframes,
+    selectedKeyframeIds,
+    timelinePixelsPerMs,
+    setCurrentTime,
+    setDuration,
+    setSelectedKeyframeIds,
+    setTimelinePixelsPerMs,
+    updateKeyframes,
+  } = useStore();
   const timelineRef = useRef<HTMLDivElement>(null);
-  
-  // Local state for editable time
+  const timelineSize = useContainerSize(timelineRef);
+  const groupDragStateRef = useRef<GroupDragState>({ active: false, anchorId: null, initialTimes: {}, startClientX: 0 });
+  const scrubStateRef = useRef<ScrubState>({ active: false });
+  const selectionAnchorRef = useRef<string | null>(null);
   const [isEditingCurrent, setIsEditingCurrent] = useState(false);
   const [currentInputStr, setCurrentInputStr] = useState('');
-  
   const [isEditingDuration, setIsEditingDuration] = useState(false);
   const [durationInputStr, setDurationInputStr] = useState('');
 
-  // Handle pointer drag using window events for better reliability
-  const isDragging = useRef(false);
+  const visibleStartTime = useMemo(() => {
+    if (timelineSize.width <= 0) {
+      return 0;
+    }
 
-  const updateTimeFromPointer = useCallback((clientX: number) => {
+    return Math.max(0, currentTime - timelineSize.width / (2 * timelinePixelsPerMs));
+  }, [currentTime, timelinePixelsPerMs, timelineSize.width]);
+
+  const visibleWidthMs = useMemo(() => {
+    if (timelineSize.width <= 0) {
+      return duration;
+    }
+
+    return timelineSize.width / timelinePixelsPerMs;
+  }, [duration, timelinePixelsPerMs, timelineSize.width]);
+
+  const visibleEndTime = Math.min(duration, visibleStartTime + visibleWidthMs);
+
+  const timeToX = useCallback((time: number) => {
+    return (time - visibleStartTime) * timelinePixelsPerMs;
+  }, [timelinePixelsPerMs, visibleStartTime]);
+
+  const updateTimeFromClientX = useCallback((clientX: number) => {
     if (!timelineRef.current) {
       return;
     }
 
     const rect = timelineRef.current.getBoundingClientRect();
-    let ratio = (clientX - rect.left) / rect.width;
-    if (ratio < 0) ratio = 0;
-    if (ratio > 1) ratio = 1;
-    setCurrentTime(ratio * duration);
-  }, [duration, setCurrentTime]);
+    const localX = Math.max(0, Math.min(clientX - rect.left, rect.width));
+    const nextTime = Math.max(0, Math.min(visibleStartTime + localX / timelinePixelsPerMs, duration));
+    setCurrentTime(nextTime);
+  }, [duration, setCurrentTime, timelinePixelsPerMs, visibleStartTime]);
+
+  const getRangeSelection = useCallback((anchorId: string, targetId: string) => {
+    const anchorIndex = keyframes.findIndex((keyframe) => keyframe.id === anchorId);
+    const targetIndex = keyframes.findIndex((keyframe) => keyframe.id === targetId);
+
+    if (anchorIndex === -1 || targetIndex === -1) {
+      return [targetId];
+    }
+
+    const startIndex = Math.min(anchorIndex, targetIndex);
+    const endIndex = Math.max(anchorIndex, targetIndex);
+
+    return keyframes.slice(startIndex, endIndex + 1).map((keyframe) => keyframe.id);
+  }, [keyframes]);
+
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const zoomFactor = event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+    setTimelinePixelsPerMs(timelinePixelsPerMs * zoomFactor);
+  };
+
+  const handleTimelinePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    setSelectedKeyframeIds([]);
+    selectionAnchorRef.current = null;
+    scrubStateRef.current.active = true;
+    updateTimeFromClientX(event.clientX);
+  };
+
+  const handleWindowPointerMove = useCallback((event: PointerEvent) => {
+    if (groupDragStateRef.current.active) {
+      const deltaX = event.clientX - groupDragStateRef.current.startClientX;
+      const deltaTime = deltaX / timelinePixelsPerMs;
+      const updatesById = Object.fromEntries(
+        Object.entries(groupDragStateRef.current.initialTimes).map(([id, initialTime]) => [
+          id,
+          { time: Math.max(0, Math.min(initialTime + deltaTime, duration)) },
+        ])
+      );
+      updateKeyframes(updatesById);
+      return;
+    }
+
+    if (!scrubStateRef.current.active) {
+      return;
+    }
+
+    updateTimeFromClientX(event.clientX);
+  }, [duration, timelinePixelsPerMs, updateKeyframes, updateTimeFromClientX]);
+
+  const handleWindowPointerUp = useCallback(() => {
+    if (groupDragStateRef.current.active) {
+      groupDragStateRef.current = { active: false, anchorId: null, initialTimes: {}, startClientX: 0 };
+    }
+
+    scrubStateRef.current.active = false;
+  }, []);
 
   useEffect(() => {
-    const handleWindowPointerMove = (e: PointerEvent) => {
-      if (isDragging.current) {
-        updateTimeFromPointer(e.clientX);
-      }
-    };
-    const handleWindowPointerUp = (e: PointerEvent) => {
-      if (isDragging.current) {
-        isDragging.current = false;
-        updateTimeFromPointer(e.clientX);
-      }
-    };
-
     window.addEventListener('pointermove', handleWindowPointerMove);
     window.addEventListener('pointerup', handleWindowPointerUp);
     window.addEventListener('pointercancel', handleWindowPointerUp);
@@ -73,36 +166,33 @@ export function Timeline() {
       window.removeEventListener('pointerup', handleWindowPointerUp);
       window.removeEventListener('pointercancel', handleWindowPointerUp);
     };
-  }, [updateTimeFromPointer]);
+  }, [handleWindowPointerMove, handleWindowPointerUp]);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    isDragging.current = true;
-    updateTimeFromPointer(e.clientX);
-  };
-
-  // Editing current time
   const startEditingCurrent = () => {
     setCurrentInputStr(formatTime(currentTime));
     setIsEditingCurrent(true);
   };
+
   const submitCurrent = () => {
-    const val = parseTime(currentInputStr);
-    if (val !== null) {
-      setCurrentTime(Math.max(0, Math.min(val, duration)));
+    const value = parseTime(currentInputStr);
+    if (value !== null) {
+      setCurrentTime(Math.max(0, Math.min(value, duration)));
     }
     setIsEditingCurrent(false);
   };
-  
-  // Editing duration
+
   const startEditingDuration = () => {
     setDurationInputStr(formatTime(duration));
     setIsEditingDuration(true);
   };
+
   const submitDuration = () => {
-    const val = parseTime(durationInputStr);
-    if (val !== null && val > 0) { // Duration must be > 0
-      setDuration(val);
-      if (currentTime > val) setCurrentTime(val); // clamp
+    const value = parseTime(durationInputStr);
+    if (value !== null && value > 0) {
+      setDuration(value);
+      if (currentTime > value) {
+        setCurrentTime(value);
+      }
     }
     setIsEditingDuration(false);
   };
@@ -114,12 +204,18 @@ export function Timeline() {
           <div className="flex items-center gap-2 text-zinc-400">
             <Clock size={16} />
             <span className="text-xs font-semibold tracking-widest uppercase">Timeline</span>
+            <button
+              type="button"
+              className="ml-2 flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-900"
+              onClick={() => setTimelinePixelsPerMs(DEFAULT_TIMELINE_PIXELS_PER_MS)}
+            >
+              <RotateCcw size={12} />
+              Reset Zoom
+            </button>
           </div>
           <div className="text-sm font-mono tracking-wider bg-zinc-950 px-3 py-1 rounded border border-zinc-800 text-blue-400 flex items-center gap-2">
-            
-            {/* Current Time Display/Edit */}
             {isEditingCurrent ? (
-              <input 
+              <input
                 autoFocus
                 className="bg-transparent text-blue-400 outline-none w-20 text-center"
                 value={currentInputStr}
@@ -128,19 +224,13 @@ export function Timeline() {
                 onKeyDown={(e) => e.key === 'Enter' && submitCurrent()}
               />
             ) : (
-              <span 
-                className="cursor-text hover:text-blue-300"
-                onClick={startEditingCurrent}
-              >
+              <span className="cursor-text hover:text-blue-300" onClick={startEditingCurrent}>
                 {formatTime(currentTime)}
               </span>
             )}
-            
-            <span className="text-zinc-600">/</span> 
-            
-            {/* Duration Time Display/Edit */}
+            <span className="text-zinc-600">/</span>
             {isEditingDuration ? (
-              <input 
+              <input
                 autoFocus
                 className="bg-transparent text-blue-400 outline-none w-20 text-center"
                 value={durationInputStr}
@@ -149,60 +239,96 @@ export function Timeline() {
                 onKeyDown={(e) => e.key === 'Enter' && submitDuration()}
               />
             ) : (
-              <span 
-                className="cursor-text hover:text-blue-300"
-                onClick={startEditingDuration}
-              >
+              <span className="cursor-text hover:text-blue-300" onClick={startEditingDuration}>
                 {formatTime(duration)}
               </span>
             )}
-
           </div>
         </div>
 
-        <div 
-          className="relative flex-1 group cursor-pointer mt-2 touch-none" 
+        <div
+          className="relative flex-1 group mt-2 touch-none"
           ref={timelineRef}
-          onPointerDown={handlePointerDown}
+          onWheel={handleWheel}
+          onPointerDown={handleTimelinePointerDown}
         >
-          {/* Track Line - The Groove */}
           <div className="absolute top-1/2 left-0 right-0 h-3 bg-zinc-900 shadow-inner rounded-full -translate-y-1/2 border border-zinc-800 pointer-events-none"></div>
-          
-          {/* Progress Fill */}
-          <div 
-            className="absolute top-1/2 left-0 h-3 bg-blue-600/20 rounded-l-full -translate-y-1/2 transition-none pointer-events-none"
-            style={{ width: `${(currentTime / duration) * 100}%` }}
-          ></div>
 
-          {/* Playhead Marker */}
-          <div 
+          <div
+            className="absolute top-1/2 h-3 bg-blue-600/20 -translate-y-1/2 pointer-events-none rounded-l-full"
+            style={{ width: `${timeToX(currentTime)}px` }}
+          />
+
+          <div
             className="absolute top-1/2 bottom-0 w-px bg-red-500 z-20 pointer-events-none -translate-y-1/2 h-10"
-            style={{ left: `${(currentTime / duration) * 100}%` }}
+            style={{ left: `${timeToX(currentTime)}px` }}
           >
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-red-500 drop-shadow-md"></div>
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-red-500/50"></div>
           </div>
 
-          {/* Keyframe Markers */}
-          {keyframes.map((kf) => (
-            <div
-              key={`timeline-marker-${kf.id}`}
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rotate-45 border-[1.5px] border-zinc-900 z-10 cursor-pointer transition-transform hover:scale-125"
-              style={{ 
-                left: `${(kf.time / duration) * 100}%`,
-                backgroundColor: selectedKeyframeIds.includes(kf.id) ? '#f59e0b' : '#3b82f6',
-                boxShadow: selectedKeyframeIds.includes(kf.id)
-                  ? '0 0 10px rgba(245, 158, 11, 0.9)'
-                  : '0 0 8px rgba(59, 130, 246, 0.8)'
-              }}
-              title={`Keyframe at ${kf.time}ms`}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setSelectedKeyframeIds([kf.id]);
-                setCurrentTime(kf.time);
-              }}
-            />
-          ))}
+          {keyframes
+            .filter((keyframe) => keyframe.time >= visibleStartTime && keyframe.time <= visibleEndTime)
+            .map((keyframe) => {
+              const x = timeToX(keyframe.time);
+              const isSelected = selectedKeyframeIds.includes(keyframe.id);
+
+              return (
+                <div
+                  key={`timeline-marker-${keyframe.id}`}
+                  className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rotate-45 border-[1.5px] border-zinc-900 z-10 cursor-grab transition-transform hover:scale-125"
+                  style={{
+                    left: `${x}px`,
+                    backgroundColor: isSelected ? '#f59e0b' : '#3b82f6',
+                    boxShadow: isSelected
+                      ? '0 0 10px rgba(245, 158, 11, 0.9)'
+                      : '0 0 8px rgba(59, 130, 246, 0.8)',
+                  }}
+                  title={`Keyframe at ${keyframe.time}ms`}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+
+                    const isCtrlLike = event.ctrlKey || event.metaKey;
+                    const isShift = event.shiftKey;
+                    const anchorId = selectionAnchorRef.current ?? selectedKeyframeIds[selectedKeyframeIds.length - 1] ?? keyframe.id;
+                    let nextSelection: string[];
+
+                    if (isShift) {
+                      const rangeSelection = getRangeSelection(anchorId, keyframe.id);
+                      nextSelection = isCtrlLike
+                        ? [...new Set([...selectedKeyframeIds, ...rangeSelection])]
+                        : rangeSelection;
+                    } else if (isCtrlLike) {
+                      nextSelection = selectedKeyframeIds.includes(keyframe.id)
+                        ? selectedKeyframeIds.filter((id) => id !== keyframe.id)
+                        : [...selectedKeyframeIds, keyframe.id];
+                    } else {
+                      nextSelection = [keyframe.id];
+                    }
+
+                    setSelectedKeyframeIds(nextSelection);
+
+                    if (!nextSelection.includes(keyframe.id)) {
+                      selectionAnchorRef.current = nextSelection[nextSelection.length - 1] ?? null;
+                      return;
+                    }
+
+                    selectionAnchorRef.current = keyframe.id;
+                    groupDragStateRef.current = {
+                      active: true,
+                      anchorId: keyframe.id,
+                      startClientX: event.clientX,
+                      initialTimes: Object.fromEntries(
+                        nextSelection
+                          .map((id) => keyframes.find((item) => item.id === id))
+                          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+                          .map((item) => [item.id, item.time])
+                      ),
+                    };
+                  }}
+                />
+              );
+            })}
         </div>
       </div>
     </div>

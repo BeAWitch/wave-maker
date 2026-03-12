@@ -27,12 +27,14 @@ interface AppState {
   selectedKeyframeIds: string[];
   clipboardKeyframes: ClipboardKeyframe[];
   pixelsPerMs: number;
+  timelinePixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setSelectedKeyframeIds: (ids: string[]) => void;
   setPixelsPerMs: (pixelsPerMs: number) => void;
+  setTimelinePixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
   deleteSelectedKeyframes: () => void;
   copySelectedKeyframes: () => void;
@@ -54,6 +56,7 @@ export const useStore = create<AppState>((set, get) => ({
   selectedKeyframeIds: [],
   clipboardKeyframes: [],
   pixelsPerMs: 0.12,
+  timelinePixelsPerMs: 0.2,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
   setDuration: (duration) => set((state) => ({
@@ -67,6 +70,9 @@ export const useStore = create<AppState>((set, get) => ({
   setSelectedKeyframeIds: (ids) => set({ selectedKeyframeIds: [...new Set(ids)] }),
   setPixelsPerMs: (pixelsPerMs) => set({
     pixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(pixelsPerMs, MAX_PIXELS_PER_MS)),
+  }),
+  setTimelinePixelsPerMs: (timelinePixelsPerMs) => set({
+    timelinePixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(timelinePixelsPerMs, MAX_PIXELS_PER_MS)),
   }),
 
   addKeyframe: () => {
