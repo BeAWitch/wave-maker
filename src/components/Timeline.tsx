@@ -6,7 +6,14 @@ import { useStore } from '../store/useStore';
 
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
-const DEFAULT_TIMELINE_PIXELS_PER_MS = 1;
+
+function getDefaultTimelinePixelsPerMs(width: number, duration: number) {
+  if (width <= 0 || duration <= 0) {
+    return 1;
+  }
+
+  return width / duration;
+}
 
 interface GroupDragState {
   active: boolean;
@@ -58,18 +65,20 @@ export function Timeline() {
   const groupDragStateRef = useRef<GroupDragState>({ active: false, anchorId: null, initialTimes: {}, startClientX: 0 });
   const scrubStateRef = useRef<ScrubState>({ active: false });
   const selectionAnchorRef = useRef<string | null>(null);
+  const hasInitializedZoomRef = useRef(false);
   const [isEditingCurrent, setIsEditingCurrent] = useState(false);
   const [currentInputStr, setCurrentInputStr] = useState('');
   const [isEditingDuration, setIsEditingDuration] = useState(false);
   const [durationInputStr, setDurationInputStr] = useState('');
 
-  const visibleStartTime = useMemo(() => {
-    if (timelineSize.width <= 0) {
-      return 0;
+  useEffect(() => {
+    if (hasInitializedZoomRef.current || timelineSize.width <= 0 || duration <= 0) {
+      return;
     }
 
-    return Math.max(0, currentTime - timelineSize.width / (2 * timelinePixelsPerMs));
-  }, [currentTime, timelinePixelsPerMs, timelineSize.width]);
+    setTimelinePixelsPerMs(getDefaultTimelinePixelsPerMs(timelineSize.width, duration));
+    hasInitializedZoomRef.current = true;
+  }, [duration, setTimelinePixelsPerMs, timelineSize.width]);
 
   const visibleWidthMs = useMemo(() => {
     if (timelineSize.width <= 0) {
@@ -79,11 +88,31 @@ export function Timeline() {
     return timelineSize.width / timelinePixelsPerMs;
   }, [duration, timelinePixelsPerMs, timelineSize.width]);
 
-  const visibleEndTime = Math.min(duration, visibleStartTime + visibleWidthMs);
+  const visibleStartTime = useMemo(() => {
+    if (timelineSize.width <= 0) {
+      return 0;
+    }
+
+    if (visibleWidthMs >= duration) {
+      return 0;
+    }
+
+    const centeredStart = currentTime - visibleWidthMs / 2;
+    return Math.max(0, Math.min(centeredStart, duration - visibleWidthMs));
+  }, [currentTime, duration, timelineSize.width, visibleWidthMs]);
 
   const timeToX = useCallback((time: number) => {
     return (time - visibleStartTime) * timelinePixelsPerMs;
   }, [timelinePixelsPerMs, visibleStartTime]);
+
+  const visibleEndTime = Math.min(duration, visibleStartTime + visibleWidthMs);
+  const rightBoundaryX = useMemo(() => {
+    if (timelineSize.width <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(timeToX(visibleEndTime), timelineSize.width) - 1);
+  }, [timeToX, timelineSize.width, visibleEndTime]);
 
   const updateTimeFromClientX = useCallback((clientX: number) => {
     if (!timelineRef.current) {
@@ -207,7 +236,7 @@ export function Timeline() {
             <button
               type="button"
               className="ml-2 flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-950/80 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-900"
-              onClick={() => setTimelinePixelsPerMs(DEFAULT_TIMELINE_PIXELS_PER_MS)}
+              onClick={() => setTimelinePixelsPerMs(getDefaultTimelinePixelsPerMs(timelineSize.width, duration))}
             >
               <RotateCcw size={12} />
               Reset Zoom
@@ -252,6 +281,16 @@ export function Timeline() {
           onWheel={handleWheel}
           onPointerDown={handleTimelinePointerDown}
         >
+          <div
+            className="absolute inset-y-0 z-10 pointer-events-none"
+            style={{ left: `${rightBoundaryX}px` }}
+          >
+            <div className="absolute -top-5 right-0 rounded border border-blue-500/40 bg-zinc-950/95 px-2 py-0.5 text-[10px] font-mono tracking-wide text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+              {formatTime(visibleEndTime)}
+            </div>
+            <div className="absolute top-1/2 bottom-0 w-px h-10 -translate-y-1/2 bg-blue-400/70 shadow-[0_0_8px_rgba(59,130,246,0.45)]"></div>
+          </div>
+
           <div className="absolute top-1/2 left-0 right-0 h-3 bg-zinc-900 shadow-inner rounded-full -translate-y-1/2 border border-zinc-800 pointer-events-none"></div>
 
           <div

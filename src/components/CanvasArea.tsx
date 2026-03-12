@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Circle, Layer, Line, Rect, Stage } from 'react-konva';
 import type Konva from 'konva';
 import { RotateCcw } from 'lucide-react';
@@ -13,10 +13,19 @@ const SAMPLE_STEP_MS = 16;
 const POINT_RADIUS = 8;
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
-const DEFAULT_PIXELS_PER_MS = 1;
+const CANVAS_BOUNDARY_INSET_PX = 24;
 const SNAP_THRESHOLD_PX = 6;
 const TIMELINE_BLUE = '#3b82f6';
 const CENTER_GUIDE_YELLOW = 'rgba(251,191,36,0.95)';
+
+function getDefaultCanvasPixelsPerMs(width: number, duration: number) {
+  if (width <= 0 || duration <= 0) {
+    return 1;
+  }
+
+  const fittedWidth = Math.max(width - CANVAS_BOUNDARY_INSET_PX * 2, width * 0.25);
+  return fittedWidth / duration;
+}
 
 interface SnapGuidesState {
   horizontal: boolean;
@@ -62,6 +71,7 @@ export function CanvasArea() {
   const initialMarqueeState: MarqueeState = { active: false, startX: 0, startY: 0, currentX: 0, currentY: 0 };
   const marqueeStateRef = useRef<MarqueeState>(initialMarqueeState);
   const groupDragStateRef = useRef<GroupDragState>({ active: false, anchorId: null, initialById: {} });
+  const hasInitializedZoomRef = useRef(false);
   const [marqueeState, setMarqueeState] = useState<MarqueeState>(initialMarqueeState);
   const [snapGuides, setSnapGuides] = useState<SnapGuidesState>({
     horizontal: false,
@@ -97,6 +107,15 @@ export function CanvasArea() {
 
   const currentValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
   const markerY = centerY - currentValue;
+
+  useEffect(() => {
+    if (hasInitializedZoomRef.current || size.width <= 0 || duration <= 0) {
+      return;
+    }
+
+    setPixelsPerMs(getDefaultCanvasPixelsPerMs(size.width, duration));
+    hasInitializedZoomRef.current = true;
+  }, [duration, setPixelsPerMs, size.width]);
 
   const resetSnapGuides = () => {
     setSnapGuides({
@@ -345,7 +364,7 @@ export function CanvasArea() {
         <button
           type="button"
           className="absolute top-3 right-4 z-10 flex items-center gap-2 rounded-md border border-zinc-700 bg-zinc-950/80 px-3 py-1.5 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-900"
-          onClick={() => setPixelsPerMs(DEFAULT_PIXELS_PER_MS)}
+          onClick={() => setPixelsPerMs(getDefaultCanvasPixelsPerMs(size.width, duration))}
         >
           <RotateCcw size={14} />
           Reset Zoom
