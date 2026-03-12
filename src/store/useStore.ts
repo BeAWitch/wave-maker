@@ -1,11 +1,15 @@
 import { create } from 'zustand';
 import { getInterpolatedValue } from '../utils/animation';
 
+export type CurveType = 'linear' | 'quadratic' | 'cubic' | 'bezier';
+export type EasingMode = 'easeIn' | 'easeOut' | 'easeInOut';
+
 export interface Keyframe {
   id: string;
   time: number;
   value: number;
-  easing: 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'elastic';
+  curveType: CurveType;
+  easingMode: EasingMode;
 }
 
 interface AppState {
@@ -14,17 +18,17 @@ interface AppState {
   isPlaying: boolean;
   keyframes: Keyframe[];
   selectedKeyframeId: string | null;
-  selectedCurveType: Keyframe['easing'];
   pixelsPerMs: number;
 
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setSelectedKeyframeId: (id: string | null) => void;
-  setCurveType: (type: Keyframe['easing']) => void;
   setPixelsPerMs: (pixelsPerMs: number) => void;
   addKeyframe: () => void;
   deleteSelectedKeyframe: () => void;
+  updateSelectedKeyframeCurveType: (curveType: CurveType) => void;
+  updateSelectedKeyframeEasingMode: (easingMode: EasingMode) => void;
   updateKeyframe: (id: string, updates: Partial<Keyframe>) => void;
 }
 
@@ -37,7 +41,6 @@ export const useStore = create<AppState>((set, get) => ({
   isPlaying: false,
   keyframes: [],
   selectedKeyframeId: null,
-  selectedCurveType: 'linear',
   pixelsPerMs: 0.12,
 
   setCurrentTime: (time) => set({ currentTime: Math.max(0, Math.min(time, get().duration)) }),
@@ -50,20 +53,20 @@ export const useStore = create<AppState>((set, get) => ({
   })),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setSelectedKeyframeId: (id) => set({ selectedKeyframeId: id }),
-  setCurveType: (type) => set({ selectedCurveType: type }),
   setPixelsPerMs: (pixelsPerMs) => set({
     pixelsPerMs: Math.max(MIN_PIXELS_PER_MS, Math.min(pixelsPerMs, MAX_PIXELS_PER_MS)),
   }),
 
   addKeyframe: () => {
-    const { currentTime, keyframes, selectedCurveType } = get();
+    const { currentTime, keyframes } = get();
     const defaultValue = getInterpolatedValue(keyframes, currentTime) ?? 0;
 
     const newKeyframe: Keyframe = {
       id: Math.random().toString(36).substring(7),
       time: currentTime,
       value: defaultValue,
-      easing: selectedCurveType,
+      curveType: 'linear',
+      easingMode: 'easeInOut',
     };
 
     const existingIndex = keyframes.findIndex((kf) => Math.abs(kf.time - currentTime) < 1);
@@ -74,7 +77,6 @@ export const useStore = create<AppState>((set, get) => ({
       updatedKeyframes[existingIndex] = {
         ...updatedKeyframes[existingIndex],
         value: newKeyframe.value,
-        easing: newKeyframe.easing,
       };
     } else {
       updatedKeyframes = [...keyframes, newKeyframe].sort((a, b) => a.time - b.time);
@@ -95,6 +97,26 @@ export const useStore = create<AppState>((set, get) => ({
       keyframes: keyframes.filter((keyframe) => keyframe.id !== selectedKeyframeId),
       selectedKeyframeId: null,
     });
+  },
+
+  updateSelectedKeyframeCurveType: (curveType) => {
+    const { selectedKeyframeId } = get();
+
+    if (!selectedKeyframeId) {
+      return;
+    }
+
+    get().updateKeyframe(selectedKeyframeId, { curveType });
+  },
+
+  updateSelectedKeyframeEasingMode: (easingMode) => {
+    const { selectedKeyframeId } = get();
+
+    if (!selectedKeyframeId) {
+      return;
+    }
+
+    get().updateKeyframe(selectedKeyframeId, { easingMode });
   },
 
   updateKeyframe: (id, updates) => {

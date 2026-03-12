@@ -1,17 +1,35 @@
 import { useEffect } from 'react';
 import { Play, Pause, CircleDot, Settings, Download, Trash2 } from 'lucide-react';
-import { useStore } from '../store/useStore';
+import { useStore, type CurveType, type EasingMode } from '../store/useStore';
+
+const CURVE_OPTIONS: Array<{ value: CurveType; label: string }> = [
+  { value: 'linear', label: 'Linear' },
+  { value: 'quadratic', label: 'Quadratic' },
+  { value: 'cubic', label: 'Cubic' },
+  { value: 'bezier', label: 'Bezier' },
+];
+
+const EASING_OPTIONS: Array<{ value: EasingMode; label: string }> = [
+  { value: 'easeIn', label: 'Ease In' },
+  { value: 'easeOut', label: 'Ease Out' },
+  { value: 'easeInOut', label: 'Ease In And Out' },
+];
 
 export function ControlsBar() {
   const {
     isPlaying,
+    keyframes,
     selectedKeyframeId,
     setIsPlaying,
     addKeyframe,
     deleteSelectedKeyframe,
-    selectedCurveType,
-    setCurveType,
+    updateSelectedKeyframeCurveType,
+    updateSelectedKeyframeEasingMode,
   } = useStore();
+
+  const selectedKeyframe = keyframes.find((keyframe) => keyframe.id === selectedKeyframeId) ?? null;
+  const canEditCurve = Boolean(selectedKeyframe);
+  const canEditEasing = Boolean(selectedKeyframe);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -75,20 +93,38 @@ export function ControlsBar() {
           
           <div className="h-6 w-px bg-zinc-800" />
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Settings size={14} className="text-zinc-500" />
-            <span className="text-xs font-medium text-zinc-400">Curve:</span>
-            <select 
-              value={selectedCurveType}
-              onChange={(e) => setCurveType(e.target.value as typeof selectedCurveType)}
-              className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-28"
-            >
-              <option value="linear" className="bg-zinc-900 text-zinc-100">Linear</option>
-              <option value="easeIn" className="bg-zinc-900 text-zinc-100">Ease In</option>
-              <option value="easeOut" className="bg-zinc-900 text-zinc-100">Ease Out</option>
-              <option value="easeInOut" className="bg-zinc-900 text-zinc-100">Ease In/Out</option>
-              <option value="elastic" className="bg-zinc-900 text-zinc-100">Elastic</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-zinc-400">Curve Type:</span>
+              <select
+                value={selectedKeyframe?.curveType ?? 'linear'}
+                onChange={(e) => updateSelectedKeyframeCurveType(e.target.value as CurveType)}
+                disabled={!canEditCurve}
+                className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-28 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {CURVE_OPTIONS.map((option) => (
+                  <option key={`curve-${option.value}`} value={option.value} className="bg-zinc-900 text-zinc-100">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-zinc-400">Easing:</span>
+              <select
+                value={selectedKeyframe?.easingMode ?? 'easeInOut'}
+                onChange={(e) => updateSelectedKeyframeEasingMode(e.target.value as EasingMode)}
+                disabled={!canEditEasing}
+                className="bg-zinc-900 border border-zinc-700 text-sm text-zinc-100 px-2 py-1 rounded outline-none focus:border-blue-500 transition-colors cursor-pointer w-30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {EASING_OPTIONS.map((option) => (
+                  <option key={`easing-${option.value}`} value={option.value} className="bg-zinc-900 text-zinc-100">
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

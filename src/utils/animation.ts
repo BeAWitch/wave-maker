@@ -1,19 +1,89 @@
-import type { Keyframe } from '../store/useStore';
+import type { CurveType, EasingMode, Keyframe } from '../store/useStore';
 
-export const easings = {
-  linear: (t: number) => t,
-  easeIn: (t: number) => t * t,
-  easeOut: (t: number) => t * (2 - t),
-  easeInOut: (t: number) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t),
-  elastic: (t: number) => {
-    const c4 = (2 * Math.PI) / 3;
-    return t === 0 ? 0 : t === 1 ? 1 : Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
-  },
-};
+const BEZIER_CONTROL_POINTS = {
+  easeIn: [0.42, 0, 1, 1],
+  easeOut: [0, 0, 0.58, 1],
+  easeInOut: [0.42, 0, 0.58, 1],
+} as const;
 
 export interface ScreenKeyframe extends Keyframe {
   screenX: number;
   screenY: number;
+}
+
+function clampProgress(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function applyCurveType(curveType: CurveType, progress: number) {
+  const safeProgress = clampProgress(progress);
+
+  switch (curveType) {
+    case 'quadratic':
+      return safeProgress * safeProgress;
+    case 'cubic':
+      return safeProgress * safeProgress * safeProgress;
+    case 'bezier':
+      return safeProgress;
+    case 'linear':
+    default:
+      return safeProgress;
+  }
+}
+
+function cubicBezierAtTime(progress: number, x1: number, y1: number, x2: number, y2: number) {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+
+  const sampleCurveX = (time: number) => ((ax * time + bx) * time + cx) * time;
+  const sampleCurveY = (time: number) => ((ay * time + by) * time + cy) * time;
+  const sampleCurveDerivativeX = (time: number) => (3 * ax * time + 2 * bx) * time + cx;
+
+  let time = progress;
+
+  for (let index = 0; index < 6; index += 1) {
+    const x = sampleCurveX(time) - progress;
+    const derivative = sampleCurveDerivativeX(time);
+
+    if (Math.abs(x) < 1e-6 || Math.abs(derivative) < 1e-6) {
+      break;
+    }
+
+    time -= x / derivative;
+  }
+
+  return sampleCurveY(clampProgress(time));
+}
+
+function applyEasingMode(progress: number, easingMode: EasingMode, curveType: CurveType) {
+  const curvedProgress = applyCurveType(curveType, progress);
+
+  if (curveType === 'bezier') {
+    const [x1, y1, x2, y2] = BEZIER_CONTROL_POINTS[easingMode];
+    return cubicBezierAtTime(curvedProgress, x1, y1, x2, y2);
+  }
+
+  switch (easingMode) {
+    case 'easeIn':
+      return curvedProgress;
+    case 'easeOut':
+      return 1 - applyCurveType(curveType, 1 - progress);
+    case 'easeInOut':
+    default:
+      if (progress < 0.5) {
+        return applyCurveType(curveType, progress * 2) / 2;
+      }
+
+      return 1 - applyCurveType(curveType, (1 - progress) * 2) / 2;
+  }
+}
+
+function getSegmentProgress(keyframe: Keyframe, progress: number) {
+  return applyEasingMode(progress, keyframe.easingMode, keyframe.curveType);
 }
 
 export function getInterpolatedValue(keyframes: Keyframe[], currentTime: number) {
@@ -45,8 +115,7 @@ export function getInterpolatedValue(keyframes: Keyframe[], currentTime: number)
       }
 
       const progress = (currentTime - startKeyframe.time) / segmentDuration;
-      const easingFn = easings[startKeyframe.easing] ?? easings.linear;
-      const easedProgress = easingFn(progress);
+      const easedProgress = getSegmentProgress(endKeyframe, progress);
 
       return startKeyframe.value + (endKeyframe.value - startKeyframe.value) * easedProgress;
     }
