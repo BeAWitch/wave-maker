@@ -6,6 +6,9 @@ import { useStore } from '../store/useStore';
 
 const ZOOM_IN_FACTOR = 1.1;
 const ZOOM_OUT_FACTOR = 0.9;
+const PLAYHEAD_SAFE_ZONE_START = 0.2;
+const PLAYHEAD_SAFE_ZONE_END = 0.8;
+const PLAYHEAD_EDGE_SCROLL_MARGIN_PX = 36;
 
 function getDefaultTimelinePixelsPerMs(width: number, duration: number) {
   if (width <= 0 || duration <= 0) {
@@ -13,6 +16,14 @@ function getDefaultTimelinePixelsPerMs(width: number, duration: number) {
   }
 
   return width / duration;
+}
+
+function clampTimelineViewStartTime(startTime: number, duration: number, visibleWidthMs: number) {
+  if (visibleWidthMs >= duration) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(startTime, duration - visibleWidthMs));
 }
 
 interface GroupDragState {
@@ -66,6 +77,7 @@ export function Timeline() {
   const scrubStateRef = useRef<ScrubState>({ active: false });
   const selectionAnchorRef = useRef<string | null>(null);
   const hasInitializedZoomRef = useRef(false);
+  const [timelineViewStartTime, setTimelineViewStartTime] = useState(0);
   const [isEditingCurrent, setIsEditingCurrent] = useState(false);
   const [currentInputStr, setCurrentInputStr] = useState('');
   const [isEditingDuration, setIsEditingDuration] = useState(false);
@@ -93,19 +105,21 @@ export function Timeline() {
       return 0;
     }
 
-    if (visibleWidthMs >= duration) {
-      return 0;
-    }
-
-    const centeredStart = currentTime - visibleWidthMs / 2;
-    return Math.max(0, Math.min(centeredStart, duration - visibleWidthMs));
-  }, [currentTime, duration, timelineSize.width, visibleWidthMs]);
+    return clampTimelineViewStartTime(timelineViewStartTime, duration, visibleWidthMs);
+  }, [duration, timelineSize.width, timelineViewStartTime, visibleWidthMs]);
 
   const timeToX = useCallback((time: number) => {
     return (time - visibleStartTime) * timelinePixelsPerMs;
   }, [timelinePixelsPerMs, visibleStartTime]);
 
   const visibleEndTime = Math.min(duration, visibleStartTime + visibleWidthMs);
+  const playheadX = useMemo(() => {
+    if (timelineSize.width <= 0) {
+      return 0;
+    }
+
+    return Math.max(0, Math.min(timeToX(currentTime), timelineSize.width));
+  }, [currentTime, timeToX, timelineSize.width]);
   const rightBoundaryX = useMemo(() => {
     if (timelineSize.width <= 0) {
       return 0;
@@ -113,6 +127,37 @@ export function Timeline() {
 
     return Math.max(0, Math.min(timeToX(visibleEndTime), timelineSize.width) - 1);
   }, [timeToX, timelineSize.width, visibleEndTime]);
+
+  useEffect(() => {
+    if (timelineSize.width <= 0) {
+      return;
+    }
+
+    if (scrubStateRef.current.active) {
+      return;
+    }
+
+    setTimelineViewStartTime((previousStartTime) => {
+      const clampedStartTime = clampTimelineViewStartTime(previousStartTime, duration, visibleWidthMs);
+
+      if (visibleWidthMs >= duration) {
+        return 0;
+      }
+
+      const safeStartTime = clampedStartTime + visibleWidthMs * PLAYHEAD_SAFE_ZONE_START;
+      const safeEndTime = clampedStartTime + visibleWidthMs * PLAYHEAD_SAFE_ZONE_END;
+
+      if (currentTime < safeStartTime) {
+        return clampTimelineViewStartTime(currentTime - visibleWidthMs * PLAYHEAD_SAFE_ZONE_START, duration, visibleWidthMs);
+      }
+
+      if (currentTime > safeEndTime) {
+        return clampTimelineViewStartTime(currentTime - visibleWidthMs * PLAYHEAD_SAFE_ZONE_END, duration, visibleWidthMs);
+      }
+
+      return clampedStartTime;
+    });
+  }, [currentTime, duration, timelineSize.width, visibleWidthMs]);
 
   const updateTimeFromClientX = useCallback((clientX: number) => {
     if (!timelineRef.current) {
@@ -122,8 +167,22 @@ export function Timeline() {
     const rect = timelineRef.current.getBoundingClientRect();
     const localX = Math.max(0, Math.min(clientX - rect.left, rect.width));
     const nextTime = Math.max(0, Math.min(visibleStartTime + localX / timelinePixelsPerMs, duration));
+
+    if (rect.width > 0 && visibleWidthMs < duration) {
+      const leftEdgeX = Math.min(PLAYHEAD_EDGE_SCROLL_MARGIN_PX, rect.width / 2);
+      const rightEdgeX = Math.max(rect.width - PLAYHEAD_EDGE_SCROLL_MARGIN_PX, rect.width / 2);
+
+      if (localX <= leftEdgeX) {
+        setTimelineViewStartTime(clampTimelineViewStartTime(nextTime - leftEdgeX / timelinePixelsPerMs, duration, visibleWidthMs));
+      } else if (localX >= rightEdgeX) {
+        setTimelineViewStartTime(clampTimelineViewStartTime(nextTime - rightEdgeX / timelinePixelsPerMs, duration, visibleWidthMs));
+      }
+    } else {
+      setTimelineViewStartTime(0);
+    }
+
     setCurrentTime(nextTime);
-  }, [duration, setCurrentTime, timelinePixelsPerMs, visibleStartTime]);
+  }, [duration, setCurrentTime, timelinePixelsPerMs, visibleStartTime, visibleWidthMs]);
 
   const getRangeSelection = useCallback((anchorId: string, targetId: string) => {
     const anchorIndex = keyframes.findIndex((keyframe) => keyframe.id === anchorId);
@@ -295,12 +354,12 @@ export function Timeline() {
 
           <div
             className="absolute top-1/2 h-3 bg-blue-600/20 -translate-y-1/2 pointer-events-none rounded-l-full"
-            style={{ width: `${timeToX(currentTime)}px` }}
+            style={{ width: `${playheadX}px` }}
           />
 
           <div
             className="absolute top-1/2 bottom-0 w-px bg-red-500 z-20 pointer-events-none -translate-y-1/2 h-10"
-            style={{ left: `${timeToX(currentTime)}px` }}
+            style={{ left: `${playheadX}px` }}
           >
             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-red-500 drop-shadow-md"></div>
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-red-500/50"></div>
