@@ -74,7 +74,7 @@ export const useStore = create<AppState>((set, get) => ({
   pixelsPerMs: 0.12,
   timelinePixelsPerMs: 0.2,
   
-  curveColor: '#60a5fa',
+  curveColor: '#ffffff',
   curveOpacity: 1,
   dotColor: '#ffffff',
   dotOpacity: 0.28,
