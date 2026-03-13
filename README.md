@@ -1,4 +1,5 @@
 # WaveMaker
+> This repo is a web version of [BounceX](https://github.com/clbhundley/BounceX).
 
 [English](#english) | [中文](#中文)
 
