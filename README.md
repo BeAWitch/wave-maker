@@ -3,6 +3,7 @@
 [English](#english) | [中文](#中文)
 
 ---
+<img src="https://github.com/BeAWitch/wave-maker/blob/main/assets/preview.png" alt="preview" title="preview">
 
 ---
 
