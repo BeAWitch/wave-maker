@@ -1,68 +1,71 @@
-# WaveMaker - Custom Waveform Animation App
+# WaveMaker
 
-WaveMaker is an interactive web-based animation tool that allows users to create custom animations of a moving dot along a path defined by keyframes and easing curves.
+[English](#english) | [中文](#中文)
 
-## 🎯 Features
+---
 
-- **Interactive Canvas**: An 800x600 graphical display area for manipulating keyframes.
-- **Timeline Control**: A draggable timeline at the bottom to scrub through time and view the current playback position.
-- **Keyframe Management**: 
-  - Click "Add Keyframe" to create a new keyframe at the current time.
-  - Each keyframe stores its X/Y position, time, and the easing curve type leading up to it.
-  - Drag keyframes around the canvas to change their spatial position.
-  - A ghost marker (semi-transparent dot) is left behind at the keyframe's initial position for reference.
-- **Custom Easing Curves**: Choose from various easing functions (Linear, Ease In, Ease Out, Ease In Out, Elastic) for each keyframe to control the acceleration and deceleration of the moving dot.
-- **Live Preview**: Play, pause, and scrub through your animation in real-time. The moving dot (red) will traverse the path according to your keyframes.
-- **Video Export (Pending)**: Export the resulting animation as a video file (WebM / MP4).
+---
 
-## 🛠 Tech Stack
+## English
 
-- **Framework**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS
-- **State Management**: Zustand
-- **Graphics & Rendering**: react-konva (Canvas 2D)
-- **Icons**: lucide-react
+### Description
+WaveMaker is a web-based animation tool that allows users to create, visually customize, and export beautiful wave animations with a moving dot as WebM videos. It provides an intuitive UI to tweak various visual parameters in real-time and perfectly replicates the canvas state into a downloadable video file.
 
-## 🚀 Execution Plan
+### Key Features
+*   **Visual Customization**: 
+    *   Modify the wave curve's color and opacity.
+    *   Customize the moving dot's color, opacity, size, and shape (Circle, Square, Triangle).
+*   **Integrated Color Picker**: Uses an advanced color picker with alpha-channel support for seamless color and opacity adjustments.
+*   **Real-time Preview**: See your changes immediately on the interactive canvas.
+*   **Video Export**: High-quality export of your custom animation directly to a `.webm` video file using a hidden background canvas and `MediaRecorder`.
 
-This project is being developed in 5 main stages:
+### Tech Stack
+*   **Frontend**: React, TypeScript
+*   **State Management**: Zustand
+*   **Canvas Rendering**: Konva & React-Konva
+*   **Color Picker**: `react-colorful`
 
-### Stage 1: Project Initialization & Static Layout (Completed)
-- Set up Vite + React + TS project.
-- Configure Tailwind CSS.
-- Build the classic 3-panel UI: Top Toolbar, Center Canvas, Bottom Timeline.
+### Getting Started
 
-### Stage 2: State Management & Timeline Interaction (Completed)
-- Implement global store using Zustand (`currentTime`, `keyframes`, `playback` state).
-- Create a draggable timeline that updates the global time.
-- Implement the "Add Keyframe" logic to capture time and curve settings.
+1.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+2.  **Run the development server**:
+    ```bash
+    npm run dev
+    ```
+3.  Open your browser and navigate to the local server URL to start creating waves!
 
-### Stage 3: Canvas Interaction & Rendering (Completed)
-- Integrate `react-konva`.
-- Render draggable keyframes on the canvas.
-- Display "ghost dots" at the initial creation coordinates of moved keyframes.
+---
 
-### Stage 4: Animation Engine (Completed)
-- Build a custom animation loop using `requestAnimationFrame`.
-- Implement mathematical interpolation and easing functions to calculate the moving dot's real-time position.
-- Render the moving dot and connect keyframes with visual paths.
+## 中文
 
-### Stage 5: Video Export (Pending)
-- Implement canvas stream capturing (`canvas.captureStream()`).
-- Use `MediaRecorder` to record the animation loop.
-- Provide export options for WebM (native) and MP4 (via `ffmpeg.wasm`).
+### 项目简介
+WaveMaker 是一个基于 Web 的动画制作工具，允许用户创建、可视化自定义带有移动点的波形动画，并将其导出为 WebM 格式的视频。它提供了一个直观的用户界面，可以实时调整各种视觉参数，并将画布状态完美呈现并导出为可下载的视频文件。
 
-## 📦 Getting Started
+### 主要功能
+*   **视觉自定义**:
+    *   修改波形曲线的颜色和透明度（默认颜色为白色）。
+    *   自定义移动点的颜色、透明度、大小和形状（支持圆形、正方形和三角形）。
+*   **集成颜色选择器**: 使用支持 Alpha 通道（透明度）的高级颜色选择器，实现颜色和透明度的无缝调整。
+*   **实时预览**: 在交互式画布上立即查看您的修改效果。
+*   **视频导出**: 使用隐藏的背景画布和 `MediaRecorder` 技术，将您的自定义动画导出为 `.webm` 视频文件。
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Start the development server:
-   ```bash
-   npm run dev
-   ```
-3. Build for production:
-   ```bash
-   npm run build
-   ```
+### 技术栈
+*   **前端框架**: React, TypeScript
+*   **状态管理**: Zustand
+*   **画布渲染**: Konva & React-Konva
+*   **颜色选择器**: `react-colorful`
+
+### 快速开始
+
+1.  **安装依赖**:
+    ```bash
+    npm install
+    ```
+2.  **启动开发服务器**:
+    ```bash
+    npm run dev
+    ```
+3.  打开浏览器并访问本地服务器地址，开始制作您的波形动画！
